@@ -30,19 +30,20 @@ RichardsSeffPrimePrimeAux::RichardsSeffPrimePrimeAux(const std::string & name, I
     mooseError("Your wrtnum1 is " << _wrt1 << " but it must obey 0 <= wrtnum1 < " << n << ".");
   if (_wrt2 < 0 || _wrt2 >= n)
     mooseError("Your wrtnum2 is " << _wrt2 << " but it must obey 0 <= wrtnum2 < " << n << ".");
-  _pressure_vars.resize(n);
   _pressure_vals.resize(n);
 
   for (int i=0 ; i<n; ++i)
-    {
-      _pressure_vars[i] = coupled("pressure_vars", i);
-      _pressure_vals[i] = &coupledValue("pressure_vars", i);
-    }
+    _pressure_vals[i] = &coupledValue("pressure_vars", i);
+
+  _mat.resize(n);
+  for (int i=0; i<n; ++i)
+    _mat[i].resize(n);
 }
 
 
 Real
 RichardsSeffPrimePrimeAux::computeValue()
 {
-  return _seff_UO.d2seff(_pressure_vals, _qp)[_wrt1][_wrt2];
+  _seff_UO.d2seff(_pressure_vals, _qp, _mat);
+  return _mat[_wrt1][_wrt2];
 }

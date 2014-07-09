@@ -10,6 +10,10 @@ class DesorptionFromMatrix;
 template<>
 InputParameters validParams<DesorptionFromMatrix>();
 
+/**
+ * Mass flow rate of adsorbed fluid from matrix
+ * Add this to TimeDerivative to form the entire DE for desorption of fluid-in-the-matrix
+ */
 class DesorptionFromMatrix : public Kernel
 {
 public:
@@ -24,13 +28,17 @@ protected:
 
   virtual Real computeQpOffDiagJacobian(unsigned int jvar);
 
+  /// moose internal variable number corresponding to the porepressure (need this of OffDiagJacobian)
   unsigned int _pressure_var;
 
-  MaterialProperty<Real> &_desorption_time_const;
-  MaterialProperty<Real> &_adsorption_time_const;
-  MaterialProperty<Real> &_equilib_conc;
-  MaterialProperty<Real> &_equilib_conc_prime;
+  /// mass flow rate from matrix = mass flow rate to porespace
+  MaterialProperty<Real> & _mass_rate_from_matrix;
 
+  /// derivative of mass flow rate from matrix wrt concentration
+  MaterialProperty<Real> & _dmass_rate_from_matrix_dC;
+
+  /// derivative of mass flow rate from matrix wrt pressure
+  MaterialProperty<Real> & _dmass_rate_from_matrix_dp;
 };
 
 #endif //DESORPTIONFROMMATRIX

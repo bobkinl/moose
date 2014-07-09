@@ -17,7 +17,7 @@
 #include "FEProblem.h"
 #include "Factory.h"
 #include "OutputWarehouse.h"
-#include "OutputBase.h"
+#include "Output.h"
 #include "MooseApp.h"
 #include "FileMesh.h"
 #include "MooseApp.h"
@@ -42,15 +42,19 @@ AddOutputAction::AddOutputAction(const std::string & name, InputParameters param
 void
 AddOutputAction::act()
 {
+  // Do nothing if FEProblem is NULL, this should only be the case for CoupledProblem
+  if (_problem == NULL)
+    return;
+
   // Get a reference to the OutputWarehouse
   OutputWarehouse & output_warehouse = _app.getOutputWarehouse();
 
   // Get the output object name
   std::string object_name = getShortName();
 
-  // Reject the name 'none', allowing 'none' to be used as a keyword in the postprocessors 'output' parameterw
-  if (object_name.compare("none") == 0)
-    mooseError("The name 'none' is a reserved name for outputters");
+  // Reject the reserved names for objects not built by MOOSE
+  if (!_moose_object_pars.get<bool>("_built_by_moose") && output_warehouse.isReservedName(object_name))
+    mooseError("The name '" << object_name << "' is a reserved name for output objects");
 
   // Check that an object by the same name does not already exist; this must be done before the object
   // is created to avoid getting misleading errors from the Parser
@@ -61,7 +65,9 @@ AddOutputAction::act()
   _moose_object_pars.addPrivateParam<FEProblem *>("_fe_problem",  _problem);
 
   // Apply the common parameters
-  _moose_object_pars.applyParameters(output_warehouse.getCommonParameters());
+  InputParameters * common = output_warehouse.getCommonParameters();
+  if (common != NULL)
+    _moose_object_pars.applyParameters(*common);
 
   // Set the correct value for the binary flag for XDA/XDR output
   if (_type.compare("XDR") == 0)
@@ -74,6 +80,6 @@ AddOutputAction::act()
     _moose_object_pars.set<std::string>("suffix") = "auto_recovery";
 
   // Create the object and add it to the warehouse
-  OutputBase * output = static_cast<OutputBase *>(_factory.create(_type, object_name, _moose_object_pars));
+  Output * output = static_cast<Output *>(_factory.create(_type, object_name, _moose_object_pars));
   output_warehouse.addOutput(output);
 }

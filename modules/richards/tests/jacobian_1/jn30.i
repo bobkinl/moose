@@ -19,18 +19,18 @@
 []
 
 [GlobalParams]
-  porepressureNames_UO = PPNames
+  richardsVarNames_UO = PPNames
 []
 
 [UserObjects]
   [./PPNames]
-    type = RichardsPorepressureNames
-    porepressure_vars = pressure
+    type = RichardsVarNames
+    richards_vars = pressure
   [../]
   [./DensityConstBulk]
     type = RichardsDensityConstBulk
     dens0 = 1
-    bulk_mod = 1.0E-1 # notice small quantity, so PETSc's "constant state" works
+    bulk_mod = 1.0E0 # notice small quantity, so PETSc's "constant state" works
   [../]
   [./SeffVG]
     type = RichardsSeff1VG
@@ -79,7 +79,6 @@
     variable = pressure
     unit_weight = '0 0 0'
     character = 1E12
-    mesh_adaptivity = false
     MyNameIsAndyWilkins = false
   [../]
 []

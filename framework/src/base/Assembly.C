@@ -45,6 +45,7 @@ Assembly::Assembly(SystemBase & sys, CouplingMatrix * & cm, THREAD_ID tid) :
     _current_side_elem(NULL),
     _current_neighbor_elem(NULL),
     _current_neighbor_side(0),
+    _current_neighbor_side_elem(NULL),
     _current_node(NULL),
     _current_neighbor_node(NULL),
 
@@ -59,11 +60,12 @@ Assembly::Assembly(SystemBase & sys, CouplingMatrix * & cm, THREAD_ID tid) :
     _block_diagonal_matrix(false)
 {
   // Build fe's for the helpers
-  getFE(FEType(FIRST, LAGRANGE));
-  getFEFace(FEType(FIRST, LAGRANGE));
+  buildFE(FEType(FIRST, LAGRANGE));
+  buildFaceFE(FEType(FIRST, LAGRANGE));
+  buildFaceNeighborFE(FEType(FIRST, LAGRANGE));
 
   // Build an FE helper object for this type for each dimension up to the dimension of the current mesh
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
   {
     _holder_fe_helper[dim] = &_fe[dim][FEType(FIRST, LAGRANGE)];
     (*_holder_fe_helper[dim])->get_phi();
@@ -77,18 +79,23 @@ Assembly::Assembly(SystemBase & sys, CouplingMatrix * & cm, THREAD_ID tid) :
     (*_holder_fe_face_helper[dim])->get_xyz();
     (*_holder_fe_face_helper[dim])->get_JxW();
     (*_holder_fe_face_helper[dim])->get_normals();
+
+    _holder_fe_neighbor_helper[dim] = &_fe_neighbor[dim][FEType(FIRST, LAGRANGE)];
+    (*_holder_fe_neighbor_helper[dim])->get_xyz();
+    (*_holder_fe_neighbor_helper[dim])->get_JxW();
+    (*_holder_fe_neighbor_helper[dim])->get_normals();
   }
 }
 
 Assembly::~Assembly()
 {
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
     for (std::map<FEType, FEBase *>::iterator it = _fe[dim].begin(); it != _fe[dim].end(); ++it)
       delete it->second;
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
     for (std::map<FEType, FEBase *>::iterator it = _fe_face[dim].begin(); it != _fe_face[dim].end(); ++it)
       delete it->second;
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
     for (std::map<FEType, FEBase *>::iterator it = _fe_neighbor[dim].begin(); it != _fe_neighbor[dim].end(); ++it)
       delete it->second;
 
@@ -112,78 +119,94 @@ Assembly::~Assembly()
     delete it->second;
 
   delete _current_side_elem;
+  delete _current_neighbor_side_elem;
 
   _current_physical_points.release();
 
   _coord.release();
 }
 
-FEBase * &
-Assembly::getFE(FEType type)
+void
+Assembly::buildFE(FEType type)
 {
   if (!_fe_shape_data[type])
     _fe_shape_data[type] = new FEShapeData;
 
   // Build an FE object for this type for each dimension up to the dimension of the current mesh
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
   {
     if (!_fe[dim][type])
       _fe[dim][type] = FEBase::build(dim, type).release();
   }
-
-  return _current_fe[type];
 }
 
-FEBase * &
-Assembly::getFEFace(FEType type)
+void
+Assembly::buildFaceFE(FEType type)
 {
   if (!_fe_shape_data_face[type])
     _fe_shape_data_face[type] = new FEShapeData;
 
   // Build an FE object for this type for each dimension up to the dimension of the current mesh
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
   {
     if (!_fe_face[dim][type])
       _fe_face[dim][type] = FEBase::build(dim, type).release();
   }
-
-  return _current_fe_face[type];
 }
 
-FEBase * &
-Assembly::getFEFaceNeighbor(FEType type)
+void
+Assembly::buildFaceNeighborFE(FEType type)
 {
   if (!_fe_shape_data_face_neighbor[type])
     _fe_shape_data_face_neighbor[type] = new FEShapeData;
 
   // Build an FE object for this type for each dimension up to the dimension of the current mesh
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
   {
     if (!_fe_neighbor[dim][type])
       _fe_neighbor[dim][type] = FEBase::build(dim, type).release();
   }
+}
 
-  return _current_fe_neighbor[type];
+FEBase * &
+Assembly::getFE(FEType type, unsigned int dim)
+{
+  buildFE(type);
+  return _fe[dim][type];
+}
+
+FEBase * &
+Assembly::getFEFace(FEType type, unsigned int dim)
+{
+  buildFaceFE(type);
+  return _fe_face[dim][type];
+}
+
+FEBase * &
+Assembly::getFEFaceNeighbor(FEType type, unsigned int dim)
+{
+  buildFaceNeighborFE(type);
+  return _fe_neighbor[dim][type];
 }
 
 void
-Assembly::createQRules(QuadratureType type, Order o)
+Assembly::createQRules(QuadratureType type, Order order, Order volume_order, Order face_order)
 {
   _holder_qrule_volume.clear();
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
-    _holder_qrule_volume[dim] = QBase::build(type, dim, o).release();
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
+    _holder_qrule_volume[dim] = QBase::build(type, dim, volume_order).release();
 
   _holder_qrule_face.clear();
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
-    _holder_qrule_face[dim] = QBase::build(type, dim - 1, o).release();
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
+    _holder_qrule_face[dim] = QBase::build(type, dim - 1, face_order).release();
 
   _holder_qrule_neighbor.clear();
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
-    _holder_qrule_neighbor[dim] = new ArbitraryQuadrature(dim, o);
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
+    _holder_qrule_neighbor[dim] = new ArbitraryQuadrature(dim, face_order);
 
   _holder_qrule_arbitrary.clear();
-  for(unsigned int dim=1; dim<=_mesh_dimension; dim++)
-    _holder_qrule_arbitrary[dim] = new ArbitraryQuadrature(dim, o);
+  for (unsigned int dim=1; dim<=_mesh_dimension; dim++)
+    _holder_qrule_arbitrary[dim] = new ArbitraryQuadrature(dim, order);
 
 //  setVolumeQRule(_qrule_volume);
 //  setFaceQRule(_qrule_face);
@@ -225,7 +248,7 @@ Assembly::invalidateCache()
   std::map<unsigned int, ElementFEShapeData * >::iterator it = _element_fe_shape_data_cache.begin();
   std::map<unsigned int, ElementFEShapeData * >::iterator end = _element_fe_shape_data_cache.end();
 
-  for(; it!=end; ++it)
+  for (; it!=end; ++it)
     it->second->_invalidated = true;
 }
 
@@ -557,7 +580,8 @@ Assembly::reinitNeighborAtReference(const Elem * neighbor, const std::vector<Poi
   // set the coord transformation
   MooseArray<Real> coord;
   coord.resize(qrule.n_points());
-  switch (_coord_type) // coord type should be the same for the neighbor
+  Moose::CoordinateSystemType coord_type = _sys.subproblem().getCoordSystem(neighbor->subdomain_id());
+  switch (coord_type) // coord type should be the same for the neighbor
   {
   case Moose::COORD_XYZ:
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
@@ -587,12 +611,21 @@ Assembly::reinitNeighborAtReference(const Elem * neighbor, const std::vector<Poi
 }
 
 void
-Assembly::reinitNeighborAtPhysical(const Elem * neighbor, const std::vector<Point> & physical_points)
+Assembly::reinitNeighborAtPhysical(const Elem * neighbor, unsigned int neighbor_side, const std::vector<Point> & physical_points)
 {
+  delete _current_neighbor_side_elem;
+  _current_neighbor_side_elem = neighbor->build_side(neighbor_side).release();
+
   std::vector<Point> reference_points;
 
   unsigned int neighbor_dim = neighbor->dim();
   FEInterface::inverse_map(neighbor_dim, FEType(), neighbor, physical_points, reference_points);
+
+  // first do the side element
+  reinitNeighborAtReference(_current_neighbor_side_elem, reference_points);
+  // compute JxW on the neighbor's face
+  unsigned int neighbor_side_dim = _current_neighbor_side_elem->dim();
+  _current_JxW_neighbor.shallowCopy(const_cast<std::vector<Real> &>((*_holder_fe_neighbor_helper[neighbor_side_dim])->get_JxW()));
 
   reinitNeighborAtReference(neighbor, reference_points);
 
@@ -646,10 +679,10 @@ Assembly::init()
   const std::vector<MooseVariable *> & vars = _sys.getVariables(_tid);
   for (std::vector<MooseVariable *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
   {
-    unsigned int j = (*jt)->index();
+    unsigned int j = (*jt)->number();
     for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
     {
-      unsigned int i = (*it)->index();
+      unsigned int i = (*it)->number();
       if ((*_cm)(i, j) != 0)
         _cm_entry.push_back(std::pair<MooseVariable *, MooseVariable *>(*it, *jt));
     }
@@ -711,8 +744,8 @@ Assembly::prepare()
     MooseVariable & ivar = *(*it).first;
     MooseVariable & jvar = *(*it).second;
 
-    unsigned int vi = ivar.index();
-    unsigned int vj = jvar.index();
+    unsigned int vi = ivar.number();
+    unsigned int vj = jvar.number();
 
     jacobianBlock(vi, vj).resize(ivar.dofIndices().size(), jvar.dofIndices().size());
     jacobianBlock(vi, vj).zero();
@@ -722,10 +755,11 @@ Assembly::prepare()
   for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
   {
     MooseVariable & ivar = *(*it);
+
     for (unsigned int i = 0; i < _sub_Re.size(); i++)
     {
-      _sub_Re[i][ivar.index()].resize(ivar.dofIndices().size());
-      _sub_Re[i][ivar.index()].zero();
+      _sub_Re[i][ivar.number()].resize(ivar.dofIndices().size());
+      _sub_Re[i][ivar.number()].zero();
     }
   }
 }
@@ -738,10 +772,10 @@ Assembly::prepareVariable(MooseVariable * var)
     MooseVariable & ivar = *(*it).first;
     MooseVariable & jvar = *(*it).second;
 
-    unsigned int vi = ivar.index();
-    unsigned int vj = jvar.index();
+    unsigned int vi = ivar.number();
+    unsigned int vj = jvar.number();
 
-    if (vi == var->index() || vj == var->index())
+    if (vi == var->number() || vj == var->number())
     {
       jacobianBlock(vi,vj).resize(ivar.dofIndices().size(), jvar.dofIndices().size());
     }
@@ -749,8 +783,8 @@ Assembly::prepareVariable(MooseVariable * var)
 
   for (unsigned int i = 0; i < _sub_Re.size(); i++)
   {
-    _sub_Re[i][var->index()].resize(var->dofIndices().size());
-    _sub_Re[i][var->index()].zero();
+    _sub_Re[i][var->number()].resize(var->dofIndices().size());
+    _sub_Re[i][var->number()].zero();
   }
 }
 
@@ -762,8 +796,8 @@ Assembly::prepareNeighbor()
     MooseVariable & ivar = *(*it).first;
     MooseVariable & jvar = *(*it).second;
 
-    unsigned int vi = ivar.index();
-    unsigned int vj = jvar.index();
+    unsigned int vi = ivar.number();
+    unsigned int vj = jvar.number();
 
     jacobianBlockNeighbor(Moose::ElementNeighbor, vi, vj).resize(ivar.dofIndices().size(), jvar.dofIndicesNeighbor().size());
     jacobianBlockNeighbor(Moose::ElementNeighbor, vi, vj).zero();
@@ -781,8 +815,8 @@ Assembly::prepareNeighbor()
     MooseVariable & ivar = *(*it);
     for (unsigned int i = 0; i < _sub_Rn.size(); i++)
     {
-      _sub_Rn[i][ivar.index()].resize(ivar.dofIndicesNeighbor().size());
-      _sub_Rn[i][ivar.index()].zero();
+      _sub_Rn[i][ivar.number()].resize(ivar.dofIndicesNeighbor().size());
+      _sub_Rn[i][ivar.number()].zero();
     }
   }
 }
@@ -811,8 +845,8 @@ Assembly::prepareScalar()
 
     for (unsigned int i = 0; i < _sub_Re.size(); i++)
     {
-      _sub_Re[i][ivar.index()].resize(idofs);
-      _sub_Re[i][ivar.index()].zero();
+      _sub_Re[i][ivar.number()].resize(idofs);
+      _sub_Re[i][ivar.number()].zero();
     }
 
     for (std::vector<MooseVariableScalar *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
@@ -820,8 +854,8 @@ Assembly::prepareScalar()
       MooseVariableScalar & jvar = *(*jt);
       unsigned int jdofs = jvar.dofIndices().size();
 
-      jacobianBlock(ivar.index(), jvar.index()).resize(idofs, jdofs);
-      jacobianBlock(ivar.index(), jvar.index()).zero();
+      jacobianBlock(ivar.number(), jvar.number()).resize(idofs, jdofs);
+      jacobianBlock(ivar.number(), jvar.number()).zero();
     }
   }
 }
@@ -842,11 +876,11 @@ Assembly::prepareOffDiagScalar()
       MooseVariable & jvar = *(*jt);
       unsigned int jdofs = jvar.dofIndices().size();
 
-      jacobianBlock(ivar.index(), jvar.index()).resize(idofs, jdofs);
-      jacobianBlock(ivar.index(), jvar.index()).zero();
+      jacobianBlock(ivar.number(), jvar.number()).resize(idofs, jdofs);
+      jacobianBlock(ivar.number(), jvar.number()).zero();
 
-      jacobianBlock(jvar.index(), ivar.index()).resize(jdofs, idofs);
-      jacobianBlock(jvar.index(), ivar.index()).zero();
+      jacobianBlock(jvar.number(), ivar.number()).resize(jdofs, idofs);
+      jacobianBlock(jvar.number(), ivar.number()).zero();
     }
   }
 }
@@ -922,7 +956,7 @@ Assembly::cacheResidualBlock(std::vector<Real> & cached_residual_values, std::ve
       _tmp_Re = res_block;
       _tmp_Re *= scaling_factor;
 
-      for(unsigned int i=0; i<_tmp_Re.size(); i++)
+      for (unsigned int i=0; i<_tmp_Re.size(); i++)
       {
         cached_residual_values.push_back(_tmp_Re(i));
         cached_residual_rows.push_back(_temp_dof_indices[i]);
@@ -930,7 +964,7 @@ Assembly::cacheResidualBlock(std::vector<Real> & cached_residual_values, std::ve
     }
     else
     {
-      for(unsigned int i=0; i<res_block.size(); i++)
+      for (unsigned int i=0; i<res_block.size(); i++)
       {
         cached_residual_values.push_back(res_block(i));
         cached_residual_rows.push_back(_temp_dof_indices[i]);
@@ -948,7 +982,7 @@ Assembly::addResidual(NumericVector<Number> & residual, Moose::KernelType type/*
   for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
   {
     MooseVariable & var = *(*it);
-    addResidualBlock(residual, _sub_Re[type][var.index()], var.dofIndices(), var.scalingFactor());
+    addResidualBlock(residual, _sub_Re[type][var.number()], var.dofIndices(), var.scalingFactor());
   }
 }
 
@@ -959,7 +993,7 @@ Assembly::addResidualNeighbor(NumericVector<Number> & residual, Moose::KernelTyp
   for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
   {
     MooseVariable & var = *(*it);
-    addResidualBlock(residual, _sub_Rn[type][var.index()], var.dofIndicesNeighbor(), var.scalingFactor());
+    addResidualBlock(residual, _sub_Rn[type][var.number()], var.dofIndicesNeighbor(), var.scalingFactor());
   }
 }
 
@@ -971,7 +1005,7 @@ Assembly::addResidualScalar(NumericVector<Number> & residual, Moose::KernelType 
   for (std::vector<MooseVariableScalar *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
   {
     MooseVariableScalar & var = *(*it);
-    addResidualBlock(residual, _sub_Re[type][var.index()], var.dofIndices(), var.scalingFactor());
+    addResidualBlock(residual, _sub_Re[type][var.number()], var.dofIndices(), var.scalingFactor());
   }
 }
 
@@ -985,7 +1019,7 @@ Assembly::cacheResidual()
     MooseVariable & var = *(*it);
 
     for (unsigned int i = 0; i < _sub_Re.size(); i++)
-      cacheResidualBlock(_cached_residual_values[i], _cached_residual_rows[i], _sub_Re[i][var.index()], var.dofIndices(), var.scalingFactor());
+      cacheResidualBlock(_cached_residual_values[i], _cached_residual_rows[i], _sub_Re[i][var.number()], var.dofIndices(), var.scalingFactor());
   }
 }
 
@@ -998,7 +1032,7 @@ Assembly::cacheResidualNeighbor()
     MooseVariable & var = *(*it);
 
     for (unsigned int i = 0; i < _sub_Re.size(); i++)
-      cacheResidualBlock(_cached_residual_values[i], _cached_residual_rows[i], _sub_Rn[i][var.index()], var.dofIndicesNeighbor(), var.scalingFactor());
+      cacheResidualBlock(_cached_residual_values[i], _cached_residual_rows[i], _sub_Rn[i][var.number()], var.dofIndicesNeighbor(), var.scalingFactor());
   }
 }
 
@@ -1038,11 +1072,11 @@ Assembly::setResidualBlock(NumericVector<Number> & residual, DenseVector<Number>
     {
       _tmp_Re = res_block;
       _tmp_Re *= scaling_factor;
-      for(unsigned int i=0; i<di.size(); i++)
+      for (unsigned int i=0; i<di.size(); i++)
         residual.set(di[i], _tmp_Re(i));
     }
     else
-      for(unsigned int i=0; i<di.size(); i++)
+      for (unsigned int i=0; i<di.size(); i++)
         residual.set(di[i], res_block(i));
   }
 }
@@ -1054,7 +1088,7 @@ Assembly::setResidual(NumericVector<Number> & residual, Moose::KernelType type/*
   for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
   {
     MooseVariable & var = *(*it);
-    setResidualBlock(residual, _sub_Re[type][var.index()], var.dofIndices(), var.scalingFactor());
+    setResidualBlock(residual, _sub_Re[type][var.number()], var.dofIndices(), var.scalingFactor());
   }
 }
 
@@ -1065,7 +1099,7 @@ Assembly::setResidualNeighbor(NumericVector<Number> & residual, Moose::KernelTyp
   for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
   {
     MooseVariable & var = *(*it);
-    setResidualBlock(residual, _sub_Rn[type][var.index()], var.dofIndicesNeighbor(), var.scalingFactor());
+    setResidualBlock(residual, _sub_Rn[type][var.number()], var.dofIndicesNeighbor(), var.scalingFactor());
   }
 }
 
@@ -1104,8 +1138,8 @@ Assembly::cacheJacobianBlock(DenseMatrix<Number> & jac_block, std::vector<dof_id
       _tmp_Ke = jac_block;
       _tmp_Ke *= scaling_factor;
 
-      for(unsigned int i=0; i<di.size(); i++)
-        for(unsigned int j=0; j<dj.size(); j++)
+      for (unsigned int i=0; i<di.size(); i++)
+        for (unsigned int j=0; j<dj.size(); j++)
         {
           _cached_jacobian_values.push_back(_tmp_Ke(i, j));
           _cached_jacobian_rows.push_back(di[i]);
@@ -1114,8 +1148,8 @@ Assembly::cacheJacobianBlock(DenseMatrix<Number> & jac_block, std::vector<dof_id
     }
     else
     {
-      for(unsigned int i=0; i<di.size(); i++)
-        for(unsigned int j=0; j<dj.size(); j++)
+      for (unsigned int i=0; i<di.size(); i++)
+        for (unsigned int j=0; j<dj.size(); j++)
         {
           _cached_jacobian_values.push_back(jac_block(i, j));
           _cached_jacobian_rows.push_back(di[i]);
@@ -1134,7 +1168,7 @@ Assembly::addCachedJacobian(SparseMatrix<Number> & jacobian)
   mooseAssert(_cached_jacobian_rows.size() == _cached_jacobian_cols.size(),
               "Error: Cached data sizes MUST be the same!");
 
-  for(unsigned int i=0; i<_cached_jacobian_rows.size(); i++)
+  for (unsigned int i=0; i<_cached_jacobian_rows.size(); i++)
     jacobian.add(_cached_jacobian_rows[i], _cached_jacobian_cols[i], _cached_jacobian_values[i]);
 
   if (_max_cached_jacobians < _cached_jacobian_values.size())
@@ -1162,8 +1196,8 @@ Assembly::addJacobian(SparseMatrix<Number> & jacobian)
     for (std::vector<MooseVariable *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
     {
       MooseVariable & jvar = *(*jt);
-      if ((*_cm)(ivar.index(), jvar.index()) != 0)
-        addJacobianBlock(jacobian, jacobianBlock(ivar.index(), jvar.index()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
+      if ((*_cm)(ivar.number(), jvar.number()) != 0)
+        addJacobianBlock(jacobian, jacobianBlock(ivar.number(), jvar.number()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
     }
   }
 
@@ -1180,8 +1214,8 @@ Assembly::addJacobian(SparseMatrix<Number> & jacobian)
         MooseVariable & jvar = *(*jt);
         // We only add jacobian blocks for d(nl-var)/d(scalar-var) now (these we generated by kernels and BCs)
         // jacobian blocks d(scalar-var)/d(nl-var) are added later with addJacobianScalar
-        addJacobianBlock(jacobian, jacobianBlock(jvar.index(), ivar.index()), jvar.dofIndices(), ivar.dofIndices(), jvar.scalingFactor());
-        addJacobianBlock(jacobian, jacobianBlock(ivar.index(), jvar.index()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
+        addJacobianBlock(jacobian, jacobianBlock(jvar.number(), ivar.number()), jvar.dofIndices(), ivar.dofIndices(), jvar.scalingFactor());
+        addJacobianBlock(jacobian, jacobianBlock(ivar.number(), jvar.number()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
       }
     }
   }
@@ -1197,11 +1231,11 @@ Assembly::addJacobianNeighbor(SparseMatrix<Number> & jacobian)
     for (std::vector<MooseVariable *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
     {
       MooseVariable & jvar = *(*jt);
-      if ((*_cm)(ivar.index(), jvar.index()) != 0)
+      if ((*_cm)(ivar.number(), jvar.number()) != 0)
       {
-        addJacobianBlock(jacobian, jacobianBlockNeighbor(Moose::ElementNeighbor, ivar.index(), jvar.index()), ivar.dofIndices(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
-        addJacobianBlock(jacobian, jacobianBlockNeighbor(Moose::NeighborElement, ivar.index(), jvar.index()), ivar.dofIndicesNeighbor(), jvar.dofIndices(), ivar.scalingFactor());
-        addJacobianBlock(jacobian, jacobianBlockNeighbor(Moose::NeighborNeighbor, ivar.index(), jvar.index()), ivar.dofIndicesNeighbor(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
+        addJacobianBlock(jacobian, jacobianBlockNeighbor(Moose::ElementNeighbor, ivar.number(), jvar.number()), ivar.dofIndices(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
+        addJacobianBlock(jacobian, jacobianBlockNeighbor(Moose::NeighborElement, ivar.number(), jvar.number()), ivar.dofIndicesNeighbor(), jvar.dofIndices(), ivar.scalingFactor());
+        addJacobianBlock(jacobian, jacobianBlockNeighbor(Moose::NeighborNeighbor, ivar.number(), jvar.number()), ivar.dofIndicesNeighbor(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
       }
     }
   }
@@ -1217,8 +1251,8 @@ Assembly::cacheJacobian()
     for (std::vector<MooseVariable *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
     {
       MooseVariable & jvar = *(*jt);
-      if ((*_cm)(ivar.index(), jvar.index()) != 0)
-        cacheJacobianBlock(jacobianBlock(ivar.index(), jvar.index()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
+      if ((*_cm)(ivar.number(), jvar.number()) != 0)
+        cacheJacobianBlock(jacobianBlock(ivar.number(), jvar.number()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
     }
   }
 }
@@ -1233,11 +1267,11 @@ Assembly::cacheJacobianNeighbor()
     for (std::vector<MooseVariable *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
     {
       MooseVariable & jvar = *(*jt);
-      if ((*_cm)(ivar.index(), jvar.index()) != 0)
+      if ((*_cm)(ivar.number(), jvar.number()) != 0)
       {
-        cacheJacobianBlock(jacobianBlockNeighbor(Moose::ElementNeighbor, ivar.index(), jvar.index()), ivar.dofIndices(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
-        cacheJacobianBlock(jacobianBlockNeighbor(Moose::NeighborElement, ivar.index(), jvar.index()), ivar.dofIndicesNeighbor(), jvar.dofIndices(), ivar.scalingFactor());
-        cacheJacobianBlock(jacobianBlockNeighbor(Moose::NeighborNeighbor, ivar.index(), jvar.index()), ivar.dofIndicesNeighbor(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
+        cacheJacobianBlock(jacobianBlockNeighbor(Moose::ElementNeighbor, ivar.number(), jvar.number()), ivar.dofIndices(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
+        cacheJacobianBlock(jacobianBlockNeighbor(Moose::NeighborElement, ivar.number(), jvar.number()), ivar.dofIndicesNeighbor(), jvar.dofIndices(), ivar.scalingFactor());
+        cacheJacobianBlock(jacobianBlockNeighbor(Moose::NeighborNeighbor, ivar.number(), jvar.number()), ivar.dofIndicesNeighbor(), jvar.dofIndicesNeighbor(), ivar.scalingFactor());
       }
     }
   }
@@ -1312,7 +1346,7 @@ Assembly::addJacobianScalar(SparseMatrix<Number> & jacobian)
     for (std::vector<MooseVariableScalar *>::const_iterator jt = scalar_vars.begin(); jt != scalar_vars.end(); ++jt)
     {
       MooseVariableScalar & jvar = *(*jt);
-      addJacobianBlock(jacobian, jacobianBlock(ivar.index(), jvar.index()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
+      addJacobianBlock(jacobian, jacobianBlock(ivar.number(), jvar.number()), ivar.dofIndices(), jvar.dofIndices(), ivar.scalingFactor());
     }
   }
 }
@@ -1325,6 +1359,6 @@ Assembly::addJacobianOffDiagScalar(SparseMatrix<Number> & jacobian, unsigned int
   for (std::vector<MooseVariable *>::const_iterator jt = vars.begin(); jt != vars.end(); ++jt)
   {
     MooseVariable & var_j = *(*jt);
-    addJacobianBlock(jacobian, jacobianBlock(var_i.index(), var_j.index()), var_i.dofIndices(), var_j.dofIndices(), var_i.scalingFactor());
+    addJacobianBlock(jacobian, jacobianBlock(var_i.number(), var_j.number()), var_i.dofIndices(), var_j.dofIndices(), var_i.scalingFactor());
   }
 }

@@ -21,7 +21,6 @@ InputParameters validParams<SmoothCircleIC>();
 class SmoothCircleIC : public InitialCondition
 {
 public:
-
   /**
    * Constructor
    *
@@ -42,6 +41,7 @@ public:
   virtual RealGradient gradient(const Point & p);
 
 protected:
+  MooseMesh & _mesh;
 
   Real _x1;
   Real _y1;
@@ -54,7 +54,6 @@ protected:
   Point _center;
 
   unsigned int _num_dim;
-
 };
 
 #endif //SMOOTHCIRCLEIC_H

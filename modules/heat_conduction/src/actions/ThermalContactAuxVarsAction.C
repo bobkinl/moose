@@ -18,6 +18,10 @@ InputParameters validParams<ThermalContactAuxVarsAction>()
   params.addParam<MooseEnum>("order", orders, "The finite element order");
   params.addParam<bool>("quadrature", false, "Whether or not to use quadrature point based gap heat transfer");
 
+  params.addParam<std::string>("conductivity_name", "thermal_conductivity", "The name of the MaterialProperty associated with conductivity "
+                               "(\"thermal_conductivity\" in the case of heat conduction)");
+  params.addParam<std::string>("conductivity_master_name", "thermal_conductivity", "The name of the MaterialProperty associated with conductivity "
+                               "(\"thermal_conductivity\" in the case of heat conduction)");
   return params;
 }
 
@@ -50,7 +54,7 @@ ThermalContactAuxVarsAction::act()
 
   std::string penetration_var_name("penetration");
 
-  if(quadrature)
+  if (quadrature)
   {
     order = "CONSTANT";
     family = "MONOMIAL";
@@ -64,16 +68,4 @@ ThermalContactAuxVarsAction::act()
     FEType(Utility::string_to_enum<Order>(order),
            Utility::string_to_enum<FEFamily>(family)));
 
-  if (getParam<std::string>("type") == "GapHeatTransferLWR")
-  {
-    _problem->addAuxVariable(getGapConductivityName(_pars),
-      FEType(Utility::string_to_enum<Order>(order),
-             Utility::string_to_enum<FEFamily>(family)));
-
-    // Now add constant conductivity variable
-    _problem->addAuxVariable("conductivity_"+getParam<NonlinearVariableName>("variable"),
-      FEType(Utility::string_to_enum<Order>("CONSTANT"),
-             Utility::string_to_enum<FEFamily>("MONOMIAL")));
-
-  }
 }

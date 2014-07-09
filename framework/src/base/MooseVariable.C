@@ -74,7 +74,13 @@ MooseVariable::MooseVariable(unsigned int var_num, const FEType & fe_type, Syste
     _node(_assembly.node()),
     _is_defined_neighbor(false),
     _node_neighbor(_assembly.nodeNeighbor())
-{}
+{
+  _assembly.buildFE(feType());
+
+  // FIXME: continuity of FE type seems equivalent with the definition of nodal variables.
+  //        Continuity does not depend on the FE dimension, so we just pass in a valid dimension.
+  _is_nodal = _assembly.getFE(feType(), _sys.mesh().dimension())->get_continuity() != DISCONTINUOUS;
+}
 
 MooseVariable::~MooseVariable()
 {
@@ -134,8 +140,7 @@ MooseVariable::activeOnSubdomain(SubdomainID subdomain) const
 bool
 MooseVariable::isNodal() const
 {
-  // FIXME: improve this fix (currently we use only monomials as elemental variables)
-  return feType().family != MONOMIAL;
+  return _is_nodal;
 }
 
 void
@@ -185,7 +190,10 @@ MooseVariable::reinitNode()
     _is_defined = true;
   }
   else
+  {
+    _dof_indices.clear(); // Clear these so Assembly doesn't think there's dofs here
     _is_defined = false;
+  }
 }
 
 void
@@ -199,7 +207,10 @@ MooseVariable::reinitNodeNeighbor()
     _is_defined_neighbor = true;
   }
   else
+  {
+    _dof_indices_neighbor.clear(); // Clear these so Assembly doesn't think there's dofs here
     _is_defined_neighbor = false;
+  }
 }
 
 void
@@ -259,7 +270,7 @@ MooseVariable::reinitNodes(const std::vector<dof_id_type> & nodes)
     // node is non-local.
     Node * nd = _subproblem.mesh().getMesh().query_node_ptr(nodes[i]);
 
-    if (nd && (_subproblem.mesh().isSemiLocal(nd)))
+    if (nd && (_subproblem.mesh().getMesh().processor_id() == nd->processor_id()))
     {
       if (nd->n_dofs(_sys.number(), _var_num) > 0)
       {
@@ -387,13 +398,10 @@ MooseVariable::computePerturbedElemValues(unsigned int perturbation_idx, Real pe
 
   if (is_transient)
   {
-    if (_is_nl)
-    {
-      _u_dot_bak = _u_dot;
-      _u_dot.resize(nqp);
-      _du_dot_du_bak = _du_dot_du;
-      _du_dot_du.resize(nqp);
-    }
+    _u_dot_bak = _u_dot;
+    _u_dot.resize(nqp);
+    _du_dot_du_bak = _du_dot_du;
+    _du_dot_du.resize(nqp);
 
     if (_need_u_old)
       _u_old_bak = _u_old;
@@ -430,11 +438,8 @@ MooseVariable::computePerturbedElemValues(unsigned int perturbation_idx, Real pe
 
     if (is_transient)
     {
-      if (_is_nl)
-      {
-        _u_dot[i] = 0;
-        _du_dot_du[i] = 0;
-      }
+      _u_dot[i] = 0;
+      _du_dot_du[i] = 0;
 
       if (_need_u_old)
         _u_old[i] = 0;
@@ -508,11 +513,8 @@ MooseVariable::computePerturbedElemValues(unsigned int perturbation_idx, Real pe
       if (_need_u_older || _need_grad_older || _need_second_older)
         soln_older_local = solution_older(idx);
 
-      if (_is_nl)
-      {
-        u_dot_local        = u_dot(idx);
-        du_dot_du_local    = du_dot_du(idx);
-      }
+      u_dot_local        = u_dot(idx);
+      du_dot_du_local    = du_dot_du(idx);
     }
 
     for (unsigned int qp=0; qp < nqp; qp++)
@@ -557,11 +559,8 @@ MooseVariable::computePerturbedElemValues(unsigned int perturbation_idx, Real pe
 
       if (is_transient)
       {
-        if (_is_nl)
-        {
-          _u_dot[qp]        += phi_local * u_dot_local;
-          _du_dot_du[qp]    += phi_local * du_dot_du_local;
-        }
+        _u_dot[qp]        += phi_local * u_dot_local;
+        _du_dot_du[qp]    += phi_local * du_dot_du_local;
 
         if (_need_u_old)
           _u_old[qp]        += phi_local * soln_old_local;
@@ -596,11 +595,8 @@ MooseVariable::restoreUnperturbedElemValues()
 
   if (_subproblem.isTransient())
   {
-    if (_is_nl)
-    {
-      _u_dot = _u_dot_bak;
-      _du_dot_du = _du_dot_du_bak;
-    }
+    _u_dot = _u_dot_bak;
+    _du_dot_du = _du_dot_du_bak;
 
     if (_need_u_old)
       _u_old = _u_old_bak;
@@ -637,11 +633,8 @@ MooseVariable::computeElemValues()
 
   if (is_transient)
   {
-    if (_is_nl)
-    {
-      _u_dot.resize(nqp);
-      _du_dot_du.resize(nqp);
-    }
+    _u_dot.resize(nqp);
+    _du_dot_du.resize(nqp);
 
     if (_need_u_old)
       _u_old.resize(nqp);
@@ -672,11 +665,8 @@ MooseVariable::computeElemValues()
 
     if (is_transient)
     {
-      if (_is_nl)
-      {
-        _u_dot[i] = 0;
-        _du_dot_du[i] = 0;
-      }
+      _u_dot[i] = 0;
+      _du_dot_du[i] = 0;
 
       if (_need_u_old)
         _u_old[i] = 0;
@@ -740,11 +730,8 @@ MooseVariable::computeElemValues()
       if (_need_u_older || _need_grad_older || _need_second_older)
         soln_older_local = solution_older(idx);
 
-      if (_is_nl)
-      {
-        u_dot_local        = u_dot(idx);
-        du_dot_du_local    = du_dot_du(idx);
-      }
+      u_dot_local        = u_dot(idx);
+      du_dot_du_local    = du_dot_du(idx);
     }
 
     for (unsigned int qp=0; qp < nqp; qp++)
@@ -789,11 +776,8 @@ MooseVariable::computeElemValues()
 
       if (is_transient)
       {
-        if (_is_nl)
-        {
-          _u_dot[qp]        += phi_local * u_dot_local;
-          _du_dot_du[qp]    += phi_local * du_dot_du_local;
-        }
+        _u_dot[qp]        += phi_local * u_dot_local;
+        _du_dot_du[qp]    += phi_local * du_dot_du_local;
 
         if (_need_u_old)
           _u_old[qp]        += phi_local * soln_old_local;
@@ -830,11 +814,8 @@ MooseVariable::computeElemValuesFace()
 
   if (is_transient)
   {
-    if (_is_nl)
-    {
-      _u_dot.resize(nqp);
-      _du_dot_du.resize(nqp);
-    }
+    _u_dot.resize(nqp);
+    _du_dot_du.resize(nqp);
 
     if (_need_u_old)
       _u_old.resize(nqp);
@@ -862,11 +843,8 @@ MooseVariable::computeElemValuesFace()
 
     if (_subproblem.isTransient())
     {
-      if (_is_nl)
-      {
-        _u_dot[i] = 0;
-        _du_dot_du[i] = 0;
-      }
+      _u_dot[i] = 0;
+      _du_dot_du[i] = 0;
 
       if (_need_u_old)
         _u_old[i] = 0;
@@ -940,11 +918,8 @@ MooseVariable::computeElemValuesFace()
 
       if (is_transient)
       {
-        if (_is_nl)
-        {
-          _u_dot[qp]        += phi_local * u_dot(idx);
-          _du_dot_du[qp]    += phi_local * du_dot_du(idx);
-        }
+        _u_dot[qp]        += phi_local * u_dot(idx);
+        _du_dot_du[qp]    += phi_local * du_dot_du(idx);
 
         if (_need_u_old)
           _u_old[qp]        += phi_local * soln_old_local;
@@ -1237,11 +1212,8 @@ MooseVariable::computeNodalValues()
     {
       _nodal_u_old.resize(n);
       _nodal_u_older.resize(n);
-      if (_is_nl)
-      {
-        _nodal_u_dot.resize(n);
-        _nodal_du_dot_du.resize(n);
-      }
+      _nodal_u_dot.resize(n);
+      _nodal_du_dot_du.resize(n);
     }
 
     for (unsigned int i = 0; i < n; i++)
@@ -1253,11 +1225,8 @@ MooseVariable::computeNodalValues()
         _nodal_u_old[i] = _sys.solutionOld()(_dof_indices[i]);
         _nodal_u_older[i] = _sys.solutionOlder()(_dof_indices[i]);
 
-        if (_is_nl)
-        {
-          _nodal_u_dot[i] = _sys.solutionUDot()(_dof_indices[i]);
-          _nodal_du_dot_du[i] = _sys.solutionDuDotDu()(_dof_indices[i]);
-        }
+        _nodal_u_dot[i] = _sys.solutionUDot()(_dof_indices[i]);
+        _nodal_du_dot_du[i] = _sys.solutionDuDotDu()(_dof_indices[i]);
       }
     }
   }
@@ -1297,11 +1266,11 @@ MooseVariable::setNodalValue(const DenseVector<Number> & values)
 
   _has_nodal_value = true;
 
-  if(isNodal())
+  if (isNodal())
     mooseError("Variable " + name() + " has to be nodal!");
   else
   {
-    for(unsigned int qp=0; qp<_u.size(); qp++)
+    for (unsigned int qp=0; qp<_u.size(); qp++)
     {
       _u[qp] = 0;
       for (unsigned int i=0; i < _nodal_u.size(); i++)
@@ -1317,11 +1286,11 @@ MooseVariable::setNodalValueNeighbor(const DenseVector<Number> & values)
     _nodal_u_neighbor[i] = values(i);
   _has_nodal_value_neighbor = true;
 
-  if(isNodal())
+  if (isNodal())
     mooseError("Variable " + name() + " has to be nodal!");
   else
   {
-    for(unsigned int qp=0; qp<_u_neighbor.size(); qp++)
+    for (unsigned int qp=0; qp<_u_neighbor.size(); qp++)
     {
       _u_neighbor[qp] = 0;
       for (unsigned int i=0; i < _nodal_u_neighbor.size(); i++)
@@ -1338,7 +1307,7 @@ MooseVariable::setNodalValue(Number value, unsigned int idx/* = 0*/)
 
   if (!isNodal()) // If this is an elemental variable, then update the qp values as well
   {
-    for(unsigned int qp=0; qp<_u.size(); qp++)
+    for (unsigned int qp=0; qp<_u.size(); qp++)
       _u[qp] = value;
   }
 }
@@ -1351,7 +1320,7 @@ MooseVariable::setNodalValueNeighbor(Number value)
 
   if (!isNodal()) // If this is an elemental variable, then update the qp values as well
   {
-    for(unsigned int qp=0; qp<_u_neighbor.size(); qp++)
+    for (unsigned int qp=0; qp<_u_neighbor.size(); qp++)
       _u_neighbor[qp] = value;
   }
 }
@@ -1364,7 +1333,7 @@ MooseVariable::computeDamping(const NumericVector<Number> & increment_vec)
   _increment.resize(nqp);
   // Compute the increment at each quadrature point
   unsigned int num_dofs = _dof_indices.size();
-  for(unsigned int qp=0; qp<nqp; qp++)
+  for (unsigned int qp=0; qp<nqp; qp++)
   {
     _increment[qp]=0;
     for (unsigned int i=0; i<num_dofs; i++)
@@ -1377,7 +1346,13 @@ MooseVariable::getNodalValue(const Node & node)
 {
   mooseAssert(_subproblem.mesh().isSemiLocal(const_cast<Node *>(&node)), "Node is not Semilocal");
 
+  // Make sure that the node has DOFs
+  /* Note, this is a reproduction of an assert within libMesh::Node::dof_number, this is done to produce a
+   * better error (see misc/check_error.node_value_off_block) */
+  mooseAssert(node.n_dofs(_sys.number(), _var_num) > 0, "Node " << node.id() << " does not contain any dofs for the " << _sys.system().variable_name(_var_num) << " variable");
+
   dof_id_type dof = node.dof_number(_sys.number(), _var_num, 0);
+
   return (*_sys.currentSolution())(dof);
 }
 
@@ -1385,6 +1360,11 @@ Number
 MooseVariable::getNodalValueOld(const Node & node)
 {
   mooseAssert(_subproblem.mesh().isSemiLocal(const_cast<Node *>(&node)), "Node is not Semilocal");
+
+  // Make sure that the node has DOFs
+  /* Note, this is a reproduction of an assert within libMesh::Node::dof_number, this is done to produce a
+   * better error (see misc/check_error.node_value_off_block) */
+  mooseAssert(node.n_dofs(_sys.number(), _var_num) > 0, "Node " << node.id() << " does not contain any dofs for the " << _sys.system().variable_name(_var_num) << " variable");
 
   dof_id_type dof = node.dof_number(_sys.number(), _var_num, 0);
   return _sys.solutionOld()(dof);
@@ -1394,6 +1374,11 @@ Number
 MooseVariable::getNodalValueOlder(const Node & node)
 {
   mooseAssert(_subproblem.mesh().isSemiLocal(const_cast<Node *>(&node)), "Node is not Semilocal");
+
+  // Make sure that the node has DOFs
+  /* Note, this is a reproduction of an assert within libMesh::Node::dof_number, this is done to produce a
+   * better error (see misc/check_error.node_value_off_block) */
+  mooseAssert(node.n_dofs(_sys.number(), _var_num) > 0, "Node " << node.id() << " does not contain any dofs for the " << _sys.system().variable_name(_var_num) << " variable");
 
   dof_id_type dof = node.dof_number(_sys.number(), _var_num, 0);
   return _sys.solutionOlder()(dof);

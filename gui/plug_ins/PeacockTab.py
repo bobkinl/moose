@@ -5,6 +5,7 @@ try:
 except ImportError:
     try:
         from PySide import QtCore, QtGui
+        QtCore.QString = str
     except ImportError:
         raise ImportError("Cannot load either PyQt or PySide")
 
@@ -15,4 +16,3 @@ class PeacockTab(QtGui.QWidget):
 
   def name(self):
     pass
-

@@ -29,13 +29,13 @@
  * Any object that needs material properties should inherit this interface.
  * If your object is also restricted to blocks and/or boundaries via the
  * BlockRestrictable and/or BoundaryRestrictable class, then MaterialPropertyInterface
- * must be inherieted following these two classes for the material property checks
+ * must be inherited following these two classes for the material property checks
  * to operate correctly.
  */
 class MaterialPropertyInterface
 {
 public:
-  MaterialPropertyInterface(InputParameters & parameters);
+  MaterialPropertyInterface(const std::string & name, InputParameters & parameters);
 
   /**
    * Retrieve reference to material property (current time)
@@ -97,10 +97,24 @@ public:
   template<typename T>
   bool hasMaterialProperty(const std::string & name);
 
-protected:
+  /**
+   * Derived classes can declare whether or not they work with
+   * stateful material properties.  See, for example, DiracKernel.  By
+   * default, they are allowed.
+   */
+  void statefulPropertiesAllowed(bool);
 
-  /// Reference to the materail data class that stores properties
-  MaterialData & _material_data;
+  /**
+   * Returns true if getMaterialProperty() has been called, false otherwise.
+   */
+  bool getMaterialPropertyCalled() const { return _get_material_property_called; }
+
+protected:
+  /// The name of the object that this interface belongs to
+  std::string _mi_name;
+
+  /// Pointer to the material data class that stores properties
+  MaterialData * _material_data;
 
   /// Reference to the FEProblem class
   FEProblem & _mi_feproblem;
@@ -117,6 +131,19 @@ protected:
    * getMaterialProperty method
    */
   void checkMaterialProperty(const std::string & name);
+
+  /**
+   * True by default. If false, this class throws an error if any of
+   * the stateful material properties interfaces are used.
+   */
+  bool _stateful_allowed;
+
+  /**
+   * Initialized to false.  Gets set to true when getMaterialProperty()
+   * is called.  Clients of this class can inquire whether getMaterialProperty()
+   * has been called by calling getMaterialPropertyCalled().
+   */
+  bool _get_material_property_called;
 };
 
 template<typename T>
@@ -124,28 +151,41 @@ MaterialProperty<T> &
 MaterialPropertyInterface::getMaterialProperty(const std::string & name)
 {
   checkMaterialProperty(name);
-  return _material_data.getProperty<T>(name);
+
+  if (!_stateful_allowed && _material_data->getMaterialPropertyStorage().hasStatefulProperties())
+    mooseError("Error: Stateful material properties not allowed for this object.");
+
+  // Update the boolean flag.
+  _get_material_property_called = true;
+
+  return _material_data->getProperty<T>(name);
 }
 
 template<typename T>
 MaterialProperty<T> &
 MaterialPropertyInterface::getMaterialPropertyOld(const std::string & name)
 {
-  return _material_data.getPropertyOld<T>(name);
+  if (!_stateful_allowed)
+    mooseError("Error: Stateful material properties not allowed for this object.");
+
+  return _material_data->getPropertyOld<T>(name);
 }
 
 template<typename T>
 MaterialProperty<T> &
 MaterialPropertyInterface::getMaterialPropertyOlder(const std::string & name)
 {
-  return _material_data.getPropertyOlder<T>(name);
+  if (!_stateful_allowed)
+    mooseError("Error: Stateful material properties not allowed for this object.");
+
+  return _material_data->getPropertyOlder<T>(name);
 }
 
 template<typename T>
 bool
 MaterialPropertyInterface::hasMaterialProperty(const std::string & name)
 {
-  return _material_data.haveProperty<T>(name);
+  return _material_data->haveProperty<T>(name);
 }
 
 #endif //MATERIALPROPERTYINTERFACE_H

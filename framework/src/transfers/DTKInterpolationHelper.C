@@ -1,22 +1,16 @@
-// The libMesh Finite Element Library.
-// Copyright (C) 2002-2012 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
-
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-
-
-
+/****************************************************************/
+/*               DO NOT MODIFY THIS HEADER                      */
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*           (c) 2010 Battelle Energy Alliance, LLC             */
+/*                   ALL RIGHTS RESERVED                        */
+/*                                                              */
+/*          Prepared by Battelle Energy Alliance, LLC           */
+/*            Under Contract No. DE-AC07-05ID14517              */
+/*            With the U. S. Department of Energy               */
+/*                                                              */
+/*            See COPYRIGHT for full restrictions               */
+/****************************************************************/
 #include "libmesh/libmesh_config.h"
 
 #ifdef LIBMESH_HAVE_DTK
@@ -50,12 +44,12 @@ DTKInterpolationHelper::DTKInterpolationHelper()
 
 DTKInterpolationHelper::~DTKInterpolationHelper()
 {
-  for(std::map<EquationSystems *, DTKInterpolationAdapter *>::iterator it = adapters.begin();
+  for (std::map<EquationSystems *, DTKInterpolationAdapter *>::iterator it = adapters.begin();
       it != adapters.end();
       ++it)
     delete it->second;
 
-  for(std::map<std::pair<unsigned int, unsigned int>, shared_domain_map_type * >::iterator it = dtk_maps.begin();
+  for (std::map<std::pair<unsigned int, unsigned int>, shared_domain_map_type * >::iterator it = dtk_maps.begin();
       it != dtk_maps.end();
       ++it)
     delete it->second;

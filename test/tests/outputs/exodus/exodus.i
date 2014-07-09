@@ -39,10 +39,16 @@
   petsc_options_value = 'hypre boomeramg'
 []
 
-##! [ExodusOutputBlock]
 [Outputs]
-  [./exodus]
+  [./console]
+    type = Console
+  [../]
+  [./out]
     type = Exodus
   [../]
 []
-##! [ExodusOutputBlock]
+
+[Debug]
+  show_var_residual_norms = true
+  #show_actions = true
+[]

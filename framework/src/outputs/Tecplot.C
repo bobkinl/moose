@@ -24,19 +24,24 @@ template<>
 InputParameters validParams<Tecplot>()
 {
   // Get the base class parameters
-  InputParameters params = validParams<OversampleOutputter>();
+  InputParameters params = validParams<OversampleOutput>();
 
   // Suppress unavailable and meaningless parameters for this object
   params.suppressParameter<bool>("output_nodal_variables");
   params.suppressParameter<bool>("output_elemental_variables");
   params.suppressParameter<bool>("output_scalar_variables");
   params.suppressParameter<bool>("output_postprocessors");
+  params.suppressParameter<bool>("output_vector_postprocessors");
   params.suppressParameter<bool>("scalar_as_nodal");
   params.suppressParameter<bool>("sequence");
+  params.suppressParameter<bool>("output_input");
 
   // Add binary toggle
-  params.addParam<bool>("binary", false, "Set VTK files to output in binary format");
+  params.addParam<bool>("binary", false, "Set Tecplot files to output in binary format");
   params.addParamNamesToGroup("binary", "Advanced");
+
+  // Add optional parameter to turn on appending to ASCII files
+  params.addParam<bool>("ascii_append", false, "If true, append to an existing ASCII file rather than creating a new file each time");
 
   // Add description for the Tecplot class
   params.addClassDescription("Object for outputting data in the Tecplot format");
@@ -46,57 +51,99 @@ InputParameters validParams<Tecplot>()
 }
 
 Tecplot::Tecplot(const std::string & name, InputParameters parameters) :
-    OversampleOutputter(name, parameters),
-    _binary(getParam<bool>("binary"))
+    OversampleOutput(name, parameters),
+    _binary(getParam<bool>("binary")),
+    _ascii_append(getParam<bool>("ascii_append")),
+    _first_time(declareRestartableData<bool>("first_time", true))
 {
-  // Force sequence output
-  /* Note: This does not change the behavior for this object b/c outputSetup() is empty, but it is
-   * place here for consistency */
+#ifndef LIBMESH_HAVE_TECPLOT_API
+  if (_binary)
+  {
+    mooseWarning("Teclplot binary output requested but not available, outputting ASCII format instead.");
+    _binary = false;
+  }
+#endif
+
+  // Force sequence output Note: This does not change the behavior for
+  // this object b/c outputSetup() is empty, but it is placed here for
+  // consistency.
   sequence(true);
 }
+
+
 
 void
 Tecplot::output()
 {
-  TecplotIO out(*_mesh_ptr, _binary);
+  TecplotIO out(*_mesh_ptr, _binary, time() + _app.getGlobalTimeOffset());
+
+  // Only set the append flag on the TecplotIO object if the user has
+  // asked for it, and this is not the first time we called output().
+  if (_ascii_append && !_first_time)
+    out.ascii_append() = true;
+
   out.write_equation_systems(filename(), *_es_ptr);
+
+  // If we're not appending, increment the file number.  If we are appending,
+  // we'll use the same filename each time.
+  if (_binary || !_ascii_append)
+    _file_num++;
+
+  // If this was the first time we called output(), the next time will not be
+  // the first time.
+  if (_first_time)
+    _first_time = false;
 }
 
 void
 Tecplot::outputNodalVariables()
 {
-  mooseError("Individual output of nodal variables is not support for Tecplot output");
+  mooseError("Individual output of nodal variables is not supported for Tecplot output");
 }
 
 void
 Tecplot::outputElementalVariables()
 {
-  mooseError("Individual output of elemental variables is not support for Tecplot output");
+  mooseError("Individual output of elemental variables is not supported for Tecplot output");
 }
 
 void
 Tecplot::outputPostprocessors()
 {
-  mooseError("Individual output of postprocessors is not support for Tecplot output");
+  mooseError("Individual output of postprocessors is not supported for Tecplot output");
+}
+
+void
+Tecplot::outputVectorPostprocessors()
+{
+  mooseError("Individual output of VectorPostprocessors is not supported for Tecplot output");
 }
 
 void
 Tecplot::outputScalarVariables()
 {
-  mooseError("Individual output of scalars is not support for Tecplot output");
+  mooseError("Individual output of scalars is not supported for Tecplot output");
 }
 
 std::string
 Tecplot::filename()
 {
-  // Append the padded time step to the file base
   std::ostringstream output;
-  output << _file_base
-         << "_"
-         << std::setw(_padding)
-         << std::setprecision(0)
-         << std::setfill('0')
-         << std::right
-         << _t_step;
-  return output.str() + ".plt";
+  output << _file_base;
+
+  // If not appending, put the padded time step in the filename.
+  if (_binary || !_ascii_append)
+    output << "_"
+           << std::setw(_padding)
+           << std::setprecision(0)
+           << std::setfill('0')
+           << std::right
+           << _file_num;
+
+  // .plt extension is for binary files
+  // .dat extension is for ASCII files
+  if (_binary)
+    return output.str() + ".plt";
+  else
+    return output.str() + ".dat";
 }

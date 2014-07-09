@@ -34,7 +34,7 @@ NodalUserObject::NodalUserObject(const std::string & name, InputParameters param
     UserObject(name, parameters),
     BlockRestrictable(name, parameters),
     BoundaryRestrictable(name, parameters),
-    MaterialPropertyInterface(parameters),
+    MaterialPropertyInterface(name, parameters),
     UserObjectInterface(parameters),
     Coupleable(parameters, true),
     ScalarCoupleable(parameters),
@@ -47,4 +47,7 @@ NodalUserObject::NodalUserObject(const std::string & name, InputParameters param
     _qp(0),
     _current_node(_assembly.node())
 {
+  const std::vector<MooseVariable *> & coupled_vars = getCoupledMooseVars();
+  for (unsigned int i=0; i<coupled_vars.size(); i++)
+    addMooseVariableDependency(coupled_vars[i]);
 }

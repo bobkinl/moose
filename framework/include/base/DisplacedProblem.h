@@ -31,7 +31,6 @@ class SubProblem;
 class MooseVariable;
 class AssemblyData;
 class DisplacedProblem;
-class ExodusOutput;
 
 template<>
 InputParameters validParams<DisplacedProblem>();
@@ -50,7 +49,7 @@ public:
   DisplacedSystem & nlSys() { return _displaced_nl; }
   DisplacedSystem & auxSys() { return _displaced_aux; }
 
-  virtual void createQRules(QuadratureType type, Order order);
+  virtual void createQRules(QuadratureType type, Order order, Order volume_order, Order face_order);
 
   /**
    * Whether or not this problem should utilize FE shape function caching.
@@ -78,9 +77,6 @@ public:
   virtual void addAuxVariable(const std::string & var_name, const FEType & type, const std::set< SubdomainID > * const active_subdomains = NULL);
   virtual void addScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1.);
   virtual void addAuxScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1.);
-
-  // Output /////
-  virtual void output(bool force = false);
 
   // Adaptivity /////
   virtual void initAdaptivity();
@@ -152,17 +148,6 @@ public:
    */
   virtual std::set<dof_id_type> & ghostedElems() { return _mproblem.ghostedElems(); }
 
-  virtual Order getQuadratureOrder();
-
-  // Postprocessors /////
-  virtual void outputPps(const FormattedTable & table);
-
-  /**
-   * Set which variables will be written in output files
-   * @param output_variables The list of variable names to write in the output files
-   */
-  virtual void setOutputVariables(std::vector<VariableName> output_variables);
-
   /**
    * Will make sure that all dofs connected to elem_id are ghosted to this processor
    */
@@ -206,9 +191,6 @@ protected:
   std::vector<Assembly *> _assembly;
 
   GeometricSearchData _geometric_search_data;
-
-  ExodusOutput * _ex;
-  bool _seq;
 
 private:
   /**

@@ -40,7 +40,7 @@
 [Kernels]
 
   [./heat]
-    type = HeatConduction
+    type = AnisoHeatConduction
     variable = temp
   [../]
 
@@ -67,13 +67,13 @@
 [Materials]
 
   [./heat]
-    type = HeatConductionMaterial
+    type = AnisoHeatConductionMaterial
     block = 1
 
     specific_heat = 0.116
-    thermal_conductivity_x = tcx
-    thermal_conductivity_y = tcy
-    thermal_conductivity_z = tcz
+    thermal_conductivity_x_pp = tcx
+    thermal_conductivity_y_pp = tcy
+    thermal_conductivity_z_pp = tcz
   [../]
 
   [./density]
@@ -123,16 +123,16 @@
   [./tcx]
     type = PlotFunction
     function = 1000
-    output = none
+    outputs = none
   [../]
   [./tcy]
     type = PlotFunction
     function = 100
-    output = none
+    outputs = none
   [../]
   [./tcz]
     type = PlotFunction
     function = 10
-    output = none
+    outputs = none
   [../]
 []

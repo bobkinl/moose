@@ -45,7 +45,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./penetrate]
     type = PenetrationAux
     variable = distance
@@ -229,13 +229,10 @@
 [Outputs]
   output_initial = true
   exodus = true
+  checkpoint = true
   [./console]
     type = Console
-    pref_log = true
+    perf_log = true
     linear_residuals = true
-  [../]
-  [./checkpoint]
-    type = Checkpoint
-    num_files = 1
   [../]
 []

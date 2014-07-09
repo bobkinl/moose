@@ -15,6 +15,7 @@
 #include "RestartDiffusion.h"
 #include "MatCoefDiffusion.h"
 #include "FuncCoefDiffusion.h"
+#include "CoefReaction.h"
 #include "Convection.h"
 #include "PolyDiffusion.h"
 #include "PolyConvection.h"
@@ -49,6 +50,11 @@
 #include "OptionallyCoupledForce.h"
 #include "FDDiffusion.h"
 #include "FDAdvection.h"
+#include "MaterialEigenKernel.h"
+#include "PHarmonic.h"
+#include "PMassEigenKernel.h"
+#include "CoupledEigenKernel.h"
+#include "ConsoleMessageKernel.h"
 
 #include "CoupledAux.h"
 #include "CoupledGradAux.h"
@@ -61,6 +67,7 @@
 #include "SumNodalValuesAux.h"
 #include "UniqueIDAux.h"
 #include "RandomAux.h"
+#include "PostprocessorAux.h"
 
 #include "MTBC.h"
 #include "PolyCoupledDirichletBC.h"
@@ -74,11 +81,13 @@
 #include "ScalarVarBC.h"
 #include "BndTestDirichletBC.h"
 #include "MatTestNeumannBC.h"
+#include "MatDivergenceBC.h"
 
 #include "TEIC.h"
 #include "MTICSum.h"
 #include "MTICMult.h"
 
+// Materials
 #include "MTMaterial.h"
 #include "Diff1Material.h"
 #include "Diff2Material.h"
@@ -91,7 +100,10 @@
 #include "CoupledMaterial2.h"
 #include "LinearInterpolationMaterial.h"
 #include "VarCouplingMaterial.h"
+#include "VarCouplingMaterialEigen.h"
 #include "BadStatefulMaterial.h"
+#include "OutputTestMaterial.h"
+#include "SumMaterial.h"
 
 #include "DGMatDiffusion.h"
 #include "DGMDDBC.h"
@@ -113,6 +125,7 @@
 #include "RandomHitUserObject.h"
 #include "RandomHitSolutionModifier.h"
 #include "MaterialPropertyUserObject.h"
+#include "MaterialCopyUserObject.h"
 #include "InsideUserObject.h"
 #include "RestartableTypes.h"
 #include "RestartableTypesChecker.h"
@@ -130,6 +143,9 @@
 #include "InsideValuePPS.h"
 #include "BoundaryValuePPS.h"
 #include "NumInternalSides.h"
+#include "NumElemQPs.h"
+#include "NumSideQPs.h"
+#include "ElementL2Diff.h"
 
 // Functions
 #include "TimestepSetupFunction.h"
@@ -142,9 +158,15 @@
 // DiracKernels
 #include "ReportingConstantSource.h"
 #include "FrontSource.h"
+#include "MaterialPointSource.h"
+#include "StatefulPointSource.h"
+#include "CachingPointSource.h"
+#include "BadCachingPointSource.h"
+#include "NonlinearSource.h"
 
 // markers
 #include "RandomHitMarker.h"
+#include "QPointMarker.h"
 
 // meshes
 #include "StripeMesh.h"
@@ -163,6 +185,8 @@
 // From MOOSE
 #include "AddVariableAction.h"
 
+// Outputs
+#include "OutputObjectTest.h"
 
 template<>
 InputParameters validParams<MooseTestApp>()
@@ -175,7 +199,7 @@ InputParameters validParams<MooseTestApp>()
 MooseTestApp::MooseTestApp(const std::string & name, InputParameters parameters):
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   MooseTestApp::registerObjects(_factory);
@@ -208,6 +232,7 @@ MooseTestApp::registerObjects(Factory & factory)
   registerKernel(RestartDiffusion);
   registerKernel(MatCoefDiffusion);
   registerKernel(FuncCoefDiffusion);
+  registerKernel(CoefReaction);
   registerKernel(Convection);
   registerKernel(PolyDiffusion);
   registerKernel(PolyConvection);
@@ -242,6 +267,11 @@ MooseTestApp::registerObjects(Factory & factory)
   registerKernel(OptionallyCoupledForce);
   registerKernel(FDDiffusion);
   registerKernel(FDAdvection);
+  registerKernel(MaterialEigenKernel);
+  registerKernel(PHarmonic);
+  registerKernel(PMassEigenKernel);
+  registerKernel(CoupledEigenKernel);
+  registerKernel(ConsoleMessageKernel);
 
   // Aux kernels
   registerAux(CoupledAux);
@@ -255,6 +285,7 @@ MooseTestApp::registerObjects(Factory & factory)
   registerAux(SumNodalValuesAux);
   registerAux(UniqueIDAux);
   registerAux(RandomAux);
+  registerAux(PostprocessorAux);
 
   // DG kernels
   registerDGKernel(DGMatDiffusion);
@@ -280,6 +311,7 @@ MooseTestApp::registerObjects(Factory & factory)
   registerBoundaryCondition(CoupledKernelGradBC);
 
   registerBoundaryCondition(DivergenceBC);
+  registerBoundaryCondition(MatDivergenceBC);
 
   // Initial conditions
   registerInitialCondition(TEIC);
@@ -299,7 +331,10 @@ MooseTestApp::registerObjects(Factory & factory)
   registerMaterial(CoupledMaterial2);
   registerMaterial(LinearInterpolationMaterial);
   registerMaterial(VarCouplingMaterial);
+  registerMaterial(VarCouplingMaterialEigen);
   registerMaterial(BadStatefulMaterial);
+  registerMaterial(OutputTestMaterial);
+  registerMaterial(SumMaterial);
 
   registerScalarKernel(ExplicitODE);
   registerScalarKernel(ImplicitODEx);
@@ -318,6 +353,11 @@ MooseTestApp::registerObjects(Factory & factory)
   // DiracKernels
   registerDiracKernel(ReportingConstantSource);
   registerDiracKernel(FrontSource);
+  registerDiracKernel(MaterialPointSource);
+  registerDiracKernel(StatefulPointSource);
+  registerDiracKernel(CachingPointSource);
+  registerDiracKernel(BadCachingPointSource);
+  registerDiracKernel(NonlinearSource);
 
   // meshes
   registerObject(StripeMesh);
@@ -329,6 +369,7 @@ MooseTestApp::registerObjects(Factory & factory)
   registerUserObject(RandomHitUserObject);
   registerUserObject(RandomHitSolutionModifier);
   registerUserObject(MaterialPropertyUserObject);
+  registerUserObject(MaterialCopyUserObject);
   registerUserObject(InsideUserObject);
   registerUserObject(RestartableTypes);
   registerUserObject(RestartableTypesChecker);
@@ -344,8 +385,13 @@ MooseTestApp::registerObjects(Factory & factory)
   registerPostprocessor(InsideValuePPS);
   registerPostprocessor(TestCopyInitialSolution);
   registerPostprocessor(BoundaryValuePPS);
+  registerPostprocessor(NumInternalSides);
+  registerPostprocessor(NumElemQPs);
+  registerPostprocessor(NumSideQPs);
+  registerPostprocessor(ElementL2Diff);
 
   registerMarker(RandomHitMarker);
+  registerMarker(QPointMarker);
 
   registerExecutioner(ExceptionSteady);
   registerExecutioner(SteadyTransientExecutioner);
@@ -353,7 +399,9 @@ MooseTestApp::registerObjects(Factory & factory)
 
   registerProblem(MooseTestProblem);
   registerProblem(FailingProblem);
-  registerProblem(NumInternalSides);
+
+  // Outputs
+  registerOutput(OutputObjectTest);
 }
 
 void

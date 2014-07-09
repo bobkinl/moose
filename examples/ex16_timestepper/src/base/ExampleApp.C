@@ -19,7 +19,7 @@ InputParameters validParams<ExampleApp>()
 ExampleApp::ExampleApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   ExampleApp::registerObjects(_factory);
@@ -42,7 +42,7 @@ void
 ExampleApp::registerObjects(Factory & factory)
 {
   // Register our new executioner
-  registerExecutioner(TransientHalf);
+  registerTimeStepper(TransientHalf);
   registerKernel(ExampleDiffusion);
   registerKernel(Convection);
   registerKernel(ExampleImplicitEuler);

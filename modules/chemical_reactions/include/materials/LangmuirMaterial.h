@@ -9,6 +9,10 @@ class LangmuirMaterial;
 template<>
 InputParameters validParams<LangmuirMaterial>();
 
+/**
+ * Holds Langmuir parameters associated with desorption
+ * Calculates mass-flow rates and derivatives thereof for use by kernels
+ */
 class LangmuirMaterial : public Material
 {
 public:
@@ -17,25 +21,38 @@ public:
 
 protected:
 
+  /// computes mass flow rates and derivatives
   virtual void computeQpProperties();
 
 
 private:
 
-  Real _mat_desorption_time_const;
-  Real _mat_adsorption_time_const;
-  VariableValue * _desorption_time_const_change;
-  VariableValue * _adsorption_time_const_change;
-  Real _mat_langmuir_density;
-  Real _mat_langmuir_pressure;
+  /// reciprocal of desorption time constant
+  VariableValue * _one_over_de_time_const;
 
+  /// reciprocal of adsorption time constant
+  VariableValue * _one_over_ad_time_const;
+
+  /// langmuir density
+  Real _langmuir_dens;
+
+  /// langmuir pressure
+  Real _langmuir_p;
+
+  /// concentration of adsorbed fluid in matrix
+  VariableValue * _conc;
+
+  /// porespace pressure (or partial pressure if multiphase flow scenario)
   VariableValue * _pressure;
 
-  MaterialProperty<Real> & _desorption_time_const;
-  MaterialProperty<Real> & _adsorption_time_const;
-  MaterialProperty<Real> & _equilib_conc;
-  MaterialProperty<Real> & _equilib_conc_prime;
+  /// mass flow rate from the matrix = mass flow rate to the porespace
+  MaterialProperty<Real> & _mass_rate_from_matrix;
 
+  /// derivative of mass flow rate wrt concentration
+  MaterialProperty<Real> & _dmass_rate_from_matrix_dC;
+
+  /// derivative of mass flow rate wrt pressure
+  MaterialProperty<Real> & _dmass_rate_from_matrix_dp;
 };
 
 #endif //LANGMUIRMATERIAL_H

@@ -7,6 +7,7 @@ try:
 except ImportError:
     try:
         from PySide import QtCore, QtGui
+        QtCore.QString = str
     except ImportError:
         raise ImportError("Cannot load either PyQt or PySide")
 
@@ -99,9 +100,12 @@ class ExodusResultRenderWidget(QtGui.QWidget):
     self.vtkwidget.show()
 
     self.vtkwidget.GetRenderWindow().AddRenderer(self.renderer)
-    self.vtkwidget.GetRenderWindow().GetInteractor().SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
-    self.vtkwidget.Initialize()
-    self.vtkwidget.Start()
+    self.interactor = self.vtkwidget.GetRenderWindow().GetInteractor()
+
+    self.interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+
+    self.show()
+    self.interactor.Initialize()
 
     self.first = True
 
@@ -148,6 +152,23 @@ class ExodusResultRenderWidget(QtGui.QWidget):
     self.leftest_controls_layout = QtGui.QVBoxLayout()
     self.left_controls_layout = QtGui.QVBoxLayout()
     self.right_controls_layout = QtGui.QVBoxLayout()
+
+    ### Output selection controls ###
+    # Create the box, layout, and control
+    self.output_control_group_box = QtGui.QGroupBox("Select Output") # adds a box for storing widget
+    self.output_control_layout = QtGui.QVBoxLayout() # creates a layout
+    self.output_control = QtGui.QComboBox() # adds the actual dropdown menu
+
+    # Set-up the control
+    self.output_control.setToolTip('Select output file to view') # sets menu tooltip
+    self.updateOutputControl() # populate the list of outputs
+    self.output_control.activated[str].connect(self._outputChanged) # set the callback function
+
+    # Add the control to the GUI
+    self.output_control_layout.addWidget(self.output_control) # add the dropdown widget to the layout
+    self.output_control_group_box.setLayout(self.output_control_layout) # add the layout to the box
+    self.leftest_controls_layout.addWidget(self.output_control_group_box) # add the box to the gui control layout
+
 
     self.block_view_group_box = QtGui.QGroupBox('Show Blocks')
 #    self.block_view_group_box.setMaximumWidth(200)
@@ -562,6 +583,36 @@ class ExodusResultRenderWidget(QtGui.QWidget):
     self.time_slider.setMinimum(0)
     self.time_slider.setMaximum(self.current_max_timestep)
 
+  ##
+  # Updates the list of available output file names
+  def updateOutputControl(self):
+
+    # Get the current item selected
+    name = self.output_control.currentText()
+
+    # Clear the existing list
+    self.output_control.clear()
+
+    # Update the list block names and store the filename as data
+    data = self.input_file_widget.getOutputFileAndBlockNames();
+
+    if data != None:
+      for i in range(len(data[0])):
+        self.output_control.addItem(data[1][i], data[0][i])
+
+    # Restore the selected name, if it is available
+    idx = self.output_control.findText(name)
+    if idx != -1:
+      self.output_control.setCurrentIndex(idx)
+
+  ##
+  # Executes when the user selects an item from the output selection dropdown box
+  def _outputChanged(self):
+    idx = self.output_control.currentIndex()
+    name = self.output_control.itemData(idx)
+    if hasattr(QtCore, 'QVariant') and isinstance(name, QtCore.QVariant):
+      name = str(name.toString())
+    self._openFile(name, False)
 
   def setupLuts(self):
     self.luts = []
@@ -838,7 +889,7 @@ class ExodusResultRenderWidget(QtGui.QWidget):
     self.current_lut = self.luts[self.color_scheme_component.currentIndex()]
     self._updateContours()
 
-  def _openFile(self, file_name):
+  def _openFile(self, file_name, reset=True):
     self._clear()
 
     self.base_stamp = os.path.getmtime(file_name)
@@ -850,10 +901,14 @@ class ExodusResultRenderWidget(QtGui.QWidget):
 
     self._lastClicked() # Go to the last timestep
 
-    self._resetView() # Reset the camera
+    if reset:
+      self._resetView() # Reset the camera
 
   def _clickedOpen(self):
     file_name = QtGui.QFileDialog.getOpenFileName(self, "Open Result", "~/", "Input Files (*.e)")
+
+    if isinstance(file_name, QtCore.QString):
+        file_name = str(file_name)
 
     if not isinstance(file_name, basestring): # This happens when using pyside
         file_name = file_name[0]
@@ -872,6 +927,9 @@ class ExodusResultRenderWidget(QtGui.QWidget):
 
   def _saveView(self):
     file_name = QtGui.QFileDialog.getSaveFileName(self, "Image File Name", "~/", "Image Files (*.png)")
+
+    if isinstance(file_name, QtCore.QString):
+        file_name = str(file_name)
 
     if not isinstance(file_name, basestring): # This happens when using pyside
         file_name = file_name[0]
@@ -992,7 +1050,7 @@ class ExodusResultRenderWidget(QtGui.QWidget):
       else:
         self.exodus_result.actor.SetScale(1.0, 1.0, 1.0)
 
-    if self.exodus_result.reader:
+    if self.exodus_results and self.exodus_result.reader:
       self.exodus_result.reader.SetTimeStep(self.timestep_to_timestep[int(textbox_string)])
       self.exodus_result.reader.Update()
       self.exodus_result.geom.Update()
@@ -1017,6 +1075,7 @@ class ExodusResultRenderWidget(QtGui.QWidget):
         self.timestep_to_timestep[self.current_max_timestep] = timestep
 
   def _updateData(self):
+
     # Check to see if there are new exodus files with adapted timesteps in them.
     if self.file_name and self.exodus_result:
       for file_name in sorted(glob.glob(self.file_name + '-s*')):
@@ -1029,39 +1088,43 @@ class ExodusResultRenderWidget(QtGui.QWidget):
           self.new_stuff_to_read = True
 
     if not self.exodus_result:
-      if not self.file_name: # Might have been set by opening a file
-        output_file_names = self.input_file_widget.getOutputFileNames()
+
+      # If the file_name is not set in the object, set if from the dropdown selection, otherwise use the stored name
+      if not self.file_name: # Might have been set by opening a file or from drop-down
+        idx = self.output_control.currentIndex()
+        file_name = self.output_control.itemData(idx)
+
+        if hasattr(QtCore, 'QVariant') and isinstance(file_name, QtCore.QVariant):
+          file_name = str(file_name.toString())
+
       else:
-        output_file_names = [self.file_name]
+        file_name = self.file_name
 
-      output_file = ''
+      if os.path.exists(file_name):
+        file_stamp = os.path.getmtime(file_name)
 
-      for file_name in output_file_names:
-        if '.e' in file_name and os.path.exists(file_name):
-          file_stamp = os.path.getmtime(file_name)
+        if int(file_stamp) >= int(self.base_stamp) and int(file_stamp) <= int(time.time() - 1) and file_name not in self.file_names:
+          self.file_name = file_name
+          self.exodus_result = ExodusResult(self, self.plane)
+          self.exodus_result.setFileName(file_name, self.current_lut)
+          self.exodus_results.append(self.exodus_result)
+          self.current_max_timestep = self.exodus_result.max_timestep
+          self.renderer.AddActor(self.exodus_result.actor)
+          self._drawEdgesChanged(self.draw_edges_checkbox.checkState())
 
-          if int(file_stamp) >= int(self.base_stamp) and int(file_stamp) <= int(time.time() - 1) and file_name not in self.file_names:
-            self.file_name = file_name
-            self.exodus_result = ExodusResult(self, self.plane)
-            self.exodus_result.setFileName(file_name, self.current_lut)
-            self.exodus_results.append(self.exodus_result)
-            self.current_max_timestep = self.exodus_result.max_timestep
-            self.renderer.AddActor(self.exodus_result.actor)
-            self._drawEdgesChanged(self.draw_edges_checkbox.checkState())
+          if self.first:
+            self.first = False
+            self.renderer.ResetCamera()
 
-            if self.first:
-              self.first = False
-              self.renderer.ResetCamera()
+          # Avoid z-buffer fighting
+          vtk.vtkPolyDataMapper().SetResolveCoincidentTopologyToPolygonOffset()
 
-            # Avoid z-buffer fighting
-            vtk.vtkPolyDataMapper().SetResolveCoincidentTopologyToPolygonOffset()
+          if self.clip_groupbox.isChecked():
+            _clippingToggled(True)
 
-            if self.clip_groupbox.isChecked():
-              _clippingToggled(True)
-
-            self.vtkwidget.repaint()
-            self._updateControls()
-            self.time_slider.setSliderPosition(self.current_max_timestep)
+          self.vtkwidget.repaint()
+          self._updateControls()
+          self.time_slider.setSliderPosition(self.current_max_timestep)
 
     if self.new_stuff_to_read and self.exodus_result and self.automatically_update:
       self._associateResultsWithTimesteps()

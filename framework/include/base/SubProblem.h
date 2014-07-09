@@ -64,8 +64,6 @@ public:
 
   virtual bool isTransient() const = 0;
 
-  virtual Order getQuadratureOrder() = 0;
-
   // Variables /////
   virtual bool hasVariable(const std::string & var_name) = 0;
   virtual MooseVariable & getVariable(THREAD_ID tid, const std::string & var_name) = 0;
@@ -194,7 +192,7 @@ public:
    * @param block_id The block id for the MaterialProperty
    * @param name The name of the property
    */
-  virtual void storeDelayedCheckMatProp(SubdomainID block_id, const std::string & name);
+  virtual void storeDelayedCheckMatProp(const std::string & requestor, SubdomainID block_id, const std::string & name);
 
   /**
    * Adds to a map based on boundary ids of material properties to validate
@@ -202,7 +200,7 @@ public:
    * @param boundary_id The block id for the MaterialProperty
    * @param name The name of the property
    */
-  virtual void storeDelayedCheckMatProp(BoundaryID boundary_id, const std::string & name);
+  virtual void storeDelayedCheckMatProp(const std::string & requestor, BoundaryID boundary_id, const std::string & name);
 
   /**
    * Checks block material properties integrity
@@ -217,6 +215,16 @@ public:
    * \see FEProblem::checkProblemIntegrity
    */
   virtual void checkBoundaryMatProps();
+
+  /**
+   * Helper method for isMatPropRequested to factor out block and boundary checking
+   */
+  virtual bool checkMatPropRequested(std::map<unsigned int, std::multimap<std::string, std::string> > &, const std::string &);
+
+  /**
+   * Find out if a material property has been requested by any object
+   */
+  virtual bool isMatPropRequested(const std::string & prop_name);
 
   /**
    * Will make sure that all dofs connected to elem_id are ghosted to this processor
@@ -300,17 +308,23 @@ protected:
   /// Map for boundary material properties (boundary_id -> list of properties)
   std::map<unsigned int, std::set<std::string> > _map_boundary_material_props;
 
+  ///@{
+  /**
+   * Data structures of the requested material properties.  We store them in a map
+   * from boudnary/block id to multimap.  Each of the multimaps is a list of
+   * requestor object names to material property names.
+   */
   /// the map of properties requested (need to be checked)
-  std::map<unsigned int, std::set<std::string> > _map_block_material_props_check;
-
-  /// the map of properties requested (need to be checked)
-  std::map<unsigned int, std::set<std::string> > _map_boundary_material_props_check;
+  std::map<unsigned int, std::multimap<std::string, std::string> > _map_block_material_props_check;
+  std::map<unsigned int, std::multimap<std::string, std::string> > _map_boundary_material_props_check;
+  ///@}
 
   /// This is the set of MooseVariables that will actually get reinited by a call to reinit(elem)
   std::vector<std::set<MooseVariable *> > _active_elemental_moose_variables;
 
   /// Whether or not there is currently a list of active elemental moose variables
-  std::vector<bool> _has_active_elemental_moose_variables;
+  /* This needs to remain <unsigned int> for threading purposes */
+  std::vector<unsigned int> _has_active_elemental_moose_variables;
 
   /// Elements that should have Dofs ghosted to the local processor
   std::set<dof_id_type> _ghosted_elems;
@@ -329,8 +343,8 @@ private:
    * \see checkBoundaryMatProps
    */
   void checkMatProps(std::map<unsigned int, std::set<std::string> > & props,
-                     std::map<unsigned int, std::set<std::string> > & check_props,
-                     std::string type);
+                     std::map<unsigned int, std::multimap<std::string, std::string> > & check_props,
+                     const std::string & type);
 
   /**
    * NOTE: This is an internal function meant for MOOSE use only!

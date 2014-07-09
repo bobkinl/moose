@@ -44,20 +44,20 @@ RandomHitSolutionModifier::execute()
   _nodes_that_were_hit.resize(hits.size());
 
 
-  for(unsigned int i=0; i<hits.size(); i++)
+  for (unsigned int i=0; i<hits.size(); i++)
   {
     const Point & hit = hits[i];
 
     // First find the element the hit lands in
     const Elem * elem = (*pl)(hit);
 
-    if (elem && (elem->processor_id() == libMesh::processor_id()))
+    if (elem && (elem->processor_id() == processor_id()))
     {
       Real closest_distance = std::numeric_limits<unsigned int>::max();
       Node * closest_node = NULL;
 
       // Find the node on that element that is closest.
-      for(unsigned int n=0; n<elem->n_nodes(); n++)
+      for (unsigned int n=0; n<elem->n_nodes(); n++)
       {
         Node * cur_node = elem->get_node(n);
         Real cur_distance = (hit - *cur_node).size();

@@ -21,7 +21,7 @@ InputParameters validParams<BlockRestrictable>()
   InputParameters params = emptyInputParameters();
 
   // Add the user-facing 'block' input parameter
-  params.addParam<std::vector<SubdomainName> >("block", "The list of ids of the blocks (SubdomainID) that this kernel will be applied to");
+  params.addParam<std::vector<SubdomainName> >("block", "The list of block ids (SubdomainID) that this object will be applied");
 
   // Add the private parameter that is populated by this class that contains valid block ids for the
   // object inheriting from this class
@@ -49,7 +49,7 @@ BlockRestrictable::BlockRestrictable(const std::string name, InputParameters & p
 
   // Check that the mesh pointer was defined, it is required for this class to operate
   if (_blk_mesh == NULL)
-    mooseError("The input paramters must contain a pointer to FEProblem via '_fe_problem' or a pointer to the MooseMesh via '_mesh'");
+    mooseError("The input parameters must contain a pointer to FEProblem via '_fe_problem' or a pointer to the MooseMesh via '_mesh'");
 
   // The 'block' input is defined
   if (parameters.isParamValid("block"))
@@ -78,38 +78,33 @@ BlockRestrictable::BlockRestrictable(const std::string name, InputParameters & p
     }
   }
 
-  // The 'block' input parameter is undefined
-  else
-  {
-    // If the object contains a variable, set the subdomain ids to those of the variable
-    if (parameters.isParamValid("variable") &&
-        (parameters.have_parameter<NonlinearVariableName>("variable") ||
-         parameters.have_parameter<AuxVariableName>("variable")))
-    {
+  // The 'block' input parameter is undefined, if the object contains a variable, set the subdomain ids to those of the variable
+  else if (parameters.isParamValid("variable") &&
+           (parameters.have_parameter<NonlinearVariableName>("variable") || parameters.have_parameter<AuxVariableName>("variable")))
       _blk_ids = variableSubdomianIDs(parameters);
-    }
-  }
 
   // Produce error if the object is not allowed to be both block and boundary restrictable
-  if (!_blk_dual_restrictable && !_blk_ids.empty())
-    if (parameters.isParamValid("_boundary_ids"))
-    {
-      std::vector<BoundaryID> bnd_ids = parameters.get<std::vector<BoundaryID> >("_boundary_ids");
-      if (!bnd_ids.empty()
-          && std::find(bnd_ids.begin(), bnd_ids.end(), Moose::ANY_BOUNDARY_ID) != bnd_ids.end())
-        mooseError("Attempted to restrict the object '" << name << "' to a block, but the object is already restricted by boundary");
-    }
+  if (!_blk_dual_restrictable && !_blk_ids.empty() && parameters.isParamValid("_boundary_ids"))
+  {
+    std::vector<BoundaryID> bnd_ids = parameters.get<std::vector<BoundaryID> >("_boundary_ids");
+    if (!bnd_ids.empty()
+        && std::find(bnd_ids.begin(), bnd_ids.end(), Moose::ANY_BOUNDARY_ID) != bnd_ids.end())
+      mooseError("Attempted to restrict the object '" << name << "' to a block, but the object is already restricted by boundary");
+  }
 
   // If no blocks were defined above, specify that it is valid on all blocks
   if (_blk_ids.empty())
+  {
     _blk_ids.insert(Moose::ANY_BLOCK_ID);
+    _blocks = std::vector<SubdomainName>(1, "ANY_BLOCK_ID");
+  }
 
   // Store the private parameter that contains the set of block ids
   parameters.set<std::vector<SubdomainID> >("_block_ids") = std::vector<SubdomainID>(_blk_ids.begin(), _blk_ids.end());
 }
 
 const std::vector<SubdomainName> &
-BlockRestrictable::blocks()
+BlockRestrictable::blocks() const
 {
   return _blocks;
 }
@@ -121,13 +116,13 @@ BlockRestrictable::blockIDs() const
 }
 
 unsigned int
-BlockRestrictable::numBlocks()
+BlockRestrictable::numBlocks() const
 {
   return (unsigned int) _blk_ids.size();
 }
 
 bool
-BlockRestrictable::hasBlocks(SubdomainName name)
+BlockRestrictable::hasBlocks(SubdomainName name) const
 {
   // Create a vector and utilize the getSubdomainIDs function, which
   // handles the ANY_BLOCK_ID (getSubdomainID does not)
@@ -137,53 +132,58 @@ BlockRestrictable::hasBlocks(SubdomainName name)
 }
 
 bool
-BlockRestrictable::hasBlocks(std::vector<SubdomainName> names)
+BlockRestrictable::hasBlocks(std::vector<SubdomainName> names) const
 {
   return hasBlocks(_blk_mesh->getSubdomainIDs(names));
 }
 
 bool
-BlockRestrictable::hasBlocks(SubdomainID id)
+BlockRestrictable::hasBlocks(SubdomainID id) const
 {
-  return _blk_ids.find(id) != _blk_ids.end();
+  if (_blk_ids.empty() || _blk_ids.find(Moose::ANY_BLOCK_ID) != _blk_ids.end())
+    return true;
+  else
+    return _blk_ids.find(id) != _blk_ids.end();
 }
 
 bool
-BlockRestrictable::hasBlocks(std::vector<SubdomainID> ids)
+BlockRestrictable::hasBlocks(std::vector<SubdomainID> ids) const
 {
   std::set<SubdomainID> ids_set(ids.begin(), ids.end());
   return hasBlocks(ids_set);
 }
 
 bool
-BlockRestrictable::hasBlocks(std::set<SubdomainID> ids)
+BlockRestrictable::hasBlocks(std::set<SubdomainID> ids) const
 {
-  // An empty input is assumed to be ANY_BLOCK_ID
-  if (ids.empty() || ids.count(Moose::ANY_BLOCK_ID) > 0)
+  if (_blk_ids.empty() || _blk_ids.find(Moose::ANY_BLOCK_ID) != _blk_ids.end())
     return true;
   else
     return std::includes(_blk_ids.begin(), _blk_ids.end(), ids.begin(), ids.end());
 }
 
 bool
-BlockRestrictable::isBlockSubset(std::set<SubdomainID> ids)
+BlockRestrictable::isBlockSubset(std::set<SubdomainID> ids) const
 {
   // An empty input is assumed to be ANY_BLOCK_ID
-  if (ids.empty() || ids.count(Moose::ANY_BLOCK_ID)  > 0)
+  if (ids.empty() || ids.find(Moose::ANY_BLOCK_ID) != ids.end())
     return true;
+
+  if (_blk_ids.find(Moose::ANY_BLOCK_ID) != _blk_ids.end())
+    return std::includes(ids.begin(), ids.end(), _blk_mesh->meshSubdomains().begin(), _blk_mesh->meshSubdomains().end());
   else
     return std::includes(ids.begin(), ids.end(), _blk_ids.begin(), _blk_ids.end());
 }
 
 bool
-BlockRestrictable::isBlockSubset(std::vector<SubdomainID> ids)
+BlockRestrictable::isBlockSubset(std::vector<SubdomainID> ids) const
 {
   std::set<SubdomainID> ids_set(ids.begin(), ids.end());
   return isBlockSubset(ids_set);
 }
 
 std::set<SubdomainID>
-BlockRestrictable::variableSubdomianIDs(InputParameters & parameters)
+BlockRestrictable::variableSubdomianIDs(InputParameters & parameters) const
 {
   // Return an empty set if _sys is not defined
   if (!parameters.isParamValid("_sys"))
@@ -203,11 +203,11 @@ BlockRestrictable::variableSubdomianIDs(InputParameters & parameters)
     var = &_blk_feproblem->getVariable(tid, parameters.get<AuxVariableName>("variable"));
 
   // Return the block ids for the variable
-  return sys->getSubdomainsForVar(var->index());
+  return sys->getSubdomainsForVar(var->number());
 }
 
 bool
-BlockRestrictable::hasBlockMaterialProperty(const std::string & name)
+BlockRestrictable::hasBlockMaterialProperty(const std::string & name) const
 {
   // Get reference to the blocks for the material
   const std::set<SubdomainID> & mat_blk = _blk_feproblem->getMaterialPropertyBlocks(name);
@@ -218,4 +218,10 @@ BlockRestrictable::hasBlockMaterialProperty(const std::string & name)
     return false;
   else
     return isBlockSubset(mat_blk);
+}
+
+const std::set<SubdomainID> &
+BlockRestrictable::meshBlockIDs()
+{
+  return _blk_mesh->meshSubdomains();
 }

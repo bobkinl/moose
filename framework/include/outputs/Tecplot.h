@@ -16,7 +16,7 @@
 #define TECPLOT_H
 
 // MOOSE includes
-#include "OversampleOutputter.h"
+#include "OversampleOutput.h"
 
 // Forward declarations
 class Tecplot;
@@ -28,7 +28,7 @@ InputParameters validParams<Tecplot>();
  * Class for output data to the TecplotII format
  */
 class Tecplot :
-  public OversampleOutputter
+  public OversampleOutput
 {
 public:
 
@@ -40,7 +40,7 @@ public:
 protected:
 
   /**
-   * Overload the OutputBase::output method, this is required for Tecplot
+   * Overload the Output::output method, this is required for Tecplot
    * output due to the method utilized for outputing single/global parameters
    */
   virtual void output();
@@ -58,6 +58,7 @@ protected:
   virtual void outputNodalVariables();
   virtual void outputElementalVariables();
   virtual void outputPostprocessors();
+  virtual void outputVectorPostprocessors();
   virtual void outputScalarVariables();
   //@}
 
@@ -65,6 +66,18 @@ private:
 
   /// Flag for binary output
   bool _binary;
+
+  /// Flag for turning on appending to ASCII files
+  bool _ascii_append;
+
+  /// True if this is the first time the file has been written to,
+  /// gets set to false after the first call to output().  If the user
+  /// has set _ascii_append but _first_time==true, we won't actually
+  /// append.  This prevents old data files in a directory from being
+  /// appended to.  Declared as a reference so it can be restartable
+  /// data, that way if we restart, we don't think it's the first time
+  /// again.
+  bool & _first_time;
 };
 
 #endif /* TECPLOT_H */

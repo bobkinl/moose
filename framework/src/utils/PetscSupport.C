@@ -138,24 +138,24 @@ void petscSetupDM (NonlinearSystem & nl) {
 
   // Initialize the part of the DM package that's packaged with Moose; in the PETSc source tree this call would be in DMInitializePackage()
   ierr = DMMooseRegisterAll();
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(nl.comm().get(),ierr);
   // Create and set up the DM that will consume the split options and deal with block matrices.
   PetscNonlinearSolver<Number> *petsc_solver = dynamic_cast<PetscNonlinearSolver<Number> *>(nl.sys().nonlinear_solver.get());
   SNES snes = petsc_solver->snes();
   /* FIXME: reset the DM, do not recreate it anew every time? */
   DM dm = PETSC_NULL;
-  ierr = DMCreateMoose(libMesh::COMM_WORLD, nl, &dm);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  ierr = DMCreateMoose(nl.comm().get(), nl, &dm);
+  CHKERRABORT(nl.comm().get(),ierr);
   ierr = DMSetFromOptions(dm);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(nl.comm().get(),ierr);
   ierr = DMSetUp(dm);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(nl.comm().get(),ierr);
   ierr = SNESSetDM(snes,dm);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(nl.comm().get(),ierr);
   ierr = DMDestroy(&dm);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(nl.comm().get(),ierr);
   ierr = SNESSetUpdate(snes,SNESUpdateDMMoose);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(nl.comm().get(),ierr);
 #endif
 }
 
@@ -210,91 +210,6 @@ petscSetOptions(FEProblem & problem)
 
 }
 
-// Quick helper to output the norm in color
-void outputNorm(Real old_norm, Real norm, bool use_color)
-{
-  std::string color(COLOR_DEFAULT);
-
-  if (use_color)
-  {
-    // Red if the residual went up...
-    if (norm > old_norm)
-      color = RED;
-    // Yellow if change is less than 5%
-    else if ((old_norm - norm) / old_norm <= 0.05)
-      color = YELLOW;
-    // Green if change is more than 5%
-    else
-      color = GREEN;
-
-    // Show the norm in color
-    Moose::out << MooseUtils::colorText<Real>(color, norm) << std::endl;
-  }
-
-  // Display the norm without color
-  else
-    Moose::out << norm << std::endl;
-}
-
-/// \todo{Remove after new build system is in place}
-PetscErrorCode nonlinearMonitor(SNES, PetscInt its, PetscReal fnorm, void *void_ptr)
-{
-  static Real old_norm;
-
-  Problem * problem = static_cast<Problem*>(void_ptr);
-
-  if (its == 0)
-    old_norm = std::numeric_limits<Real>::max();
-
-
-  libMesh::out << std::setw(2) << its
-               << " Nonlinear |R| = ";
-
-  outputNorm(old_norm, fnorm, problem->shouldColorOutput());
-
-  old_norm = fnorm;
-
-  return 0;
-}
-
-/// \todo{Remove after new output system is in place}
-PetscErrorCode  linearMonitor(KSP /*ksp*/, PetscInt its, PetscReal rnorm, void *void_ptr)
-{
-  static Real old_norm;
-
-  Problem * problem = static_cast<Problem*>(void_ptr);
-
-  if (!problem)
-    mooseError("What are you trying to solve?");
-
-  if (its == 0)
-    old_norm = std::numeric_limits<Real>::max();
-
-  libMesh::out << std::setw(7) << its
-               << std::scientific
-               << " Linear |R| = ";
-
-  outputNorm(old_norm, rnorm, problem->shouldColorOutput());
-
-  old_norm = rnorm;
-
-  return 0;
-}
-
-PetscErrorCode petscNonlinearMonitor(SNES, PetscInt its, PetscReal fnorm, void *void_ptr)
-{
-  Console * console_ptr = static_cast<Console *>(void_ptr);
-  console_ptr->nonlinearMonitor(its, fnorm);
-  return 0;
-}
-
-PetscErrorCode petscLinearMonitor(KSP /*ksp*/, PetscInt its, PetscReal rnorm, void *void_ptr)
-{
- Console * console_ptr = static_cast<Console *>(void_ptr);
- console_ptr->linearMonitor(its, rnorm);
-  return 0;
-}
-
 PetscErrorCode petscSetupOutput(CommandLine * cmd_line)
 {
   char code[10] = {45,45,109,111,111,115,101};
@@ -305,6 +220,10 @@ PetscErrorCode petscSetupOutput(CommandLine * cmd_line)
 
 PetscErrorCode petscConverged(KSP ksp, PetscInt n, PetscReal rnorm, KSPConvergedReason * reason, void * ctx)
 {
+  // Cast the context pointer coming from PETSc to an FEProblem& and
+  // get a reference to the System from it.
+  FEProblem & problem = *static_cast<FEProblem *>(ctx);
+
   // Let's be nice and always check PETSc error codes.
   PetscErrorCode ierr = 0;
 
@@ -314,7 +233,7 @@ PetscErrorCode petscConverged(KSP ksp, PetscInt n, PetscReal rnorm, KSPConverged
   // to be on the safe side, we push a different error handler before
   // calling KSPDefaultConverged().
   ierr = PetscPushErrorHandler(PetscReturnErrorHandler, /*void* ctx=*/ PETSC_NULL);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(problem.comm().get(),ierr);
 
 #if PETSC_VERSION_LESS_THAN(3,0,0)
   // Prior to PETSc 3.0.0, you could call KSPDefaultConverged with a NULL context
@@ -340,7 +259,7 @@ PetscErrorCode petscConverged(KSP ksp, PetscInt n, PetscReal rnorm, KSPConverged
   // Pop the Error handler we pushed on the stack to go back
   // to default PETSc error handling behavior.
   ierr = PetscPopErrorHandler();
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(problem.comm().get(),ierr);
 
   // Get tolerances from the KSP object
   PetscReal rtol = 0.;
@@ -348,11 +267,7 @@ PetscErrorCode petscConverged(KSP ksp, PetscInt n, PetscReal rnorm, KSPConverged
   PetscReal dtol = 0.;
   PetscInt maxits = 0;
   ierr = KSPGetTolerances(ksp, &rtol, &atol, &dtol, &maxits);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
-
-  // Cast the context pointer coming from PETSc to an FEProblem& and
-  // get a reference to the System from it.
-  FEProblem & problem = *static_cast<FEProblem *>(ctx);
+  CHKERRABORT(problem.comm().get(),ierr);
 
   // Now do some additional MOOSE-specific tests...
   std::string msg;
@@ -402,12 +317,12 @@ PetscErrorCode petscNonlinearConverged(SNES snes, PetscInt it, PetscReal xnorm, 
                            &stol,
                            &maxit,
                            &maxf);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(problem.comm().get(),ierr);
 
   // Get current number of function evaluations done by SNES.
   PetscInt nfuncs = 0;
   ierr = SNESGetNumberFunctionEvals(snes, &nfuncs);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(problem.comm().get(),ierr);
 
   // Error message that will be set by the FEProblem.
   std::string msg;
@@ -506,7 +421,7 @@ PetscErrorCode dampedCheck(SNES /*snes*/, Vec x, Vec y, Vec w, void *lsctx, Pets
 
   {
     // cls is a PetscVector wrapper around the Vec in current_local_solution
-    PetscVector<Number> cls(static_cast<PetscVector<Number> *>(system.current_local_solution.get())->vec(), libMesh::CommWorld);
+    PetscVector<Number> cls(static_cast<PetscVector<Number> *>(system.current_local_solution.get())->vec(), problem.comm());
 
     // Create new NumericVectors with the right ghosting - note: these will be destroyed
     // when this function exits, so nobody better hold pointers to them any more!
@@ -514,11 +429,11 @@ PetscErrorCode dampedCheck(SNES /*snes*/, Vec x, Vec y, Vec w, void *lsctx, Pets
     AutoPtr<NumericVector<Number> > ghosted_w_aptr( cls.zero_clone() );
 
     // Create PetscVector wrappers around the Vecs.
-    PetscVector<Number> ghosted_y( static_cast<PetscVector<Number> *>(ghosted_y_aptr.get())->vec(), libMesh::CommWorld);
-    PetscVector<Number> ghosted_w( static_cast<PetscVector<Number> *>(ghosted_w_aptr.get())->vec(), libMesh::CommWorld);
+    PetscVector<Number> ghosted_y( static_cast<PetscVector<Number> *>(ghosted_y_aptr.get())->vec(), problem.comm());
+    PetscVector<Number> ghosted_w( static_cast<PetscVector<Number> *>(ghosted_w_aptr.get())->vec(), problem.comm());
 
-    ierr = VecCopy(y, ghosted_y.vec()); CHKERRABORT(libMesh::COMM_WORLD,ierr);
-    ierr = VecCopy(w, ghosted_w.vec()); CHKERRABORT(libMesh::COMM_WORLD,ierr);
+    ierr = VecCopy(y, ghosted_y.vec()); CHKERRABORT(problem.comm().get(),ierr);
+    ierr = VecCopy(w, ghosted_w.vec()); CHKERRABORT(problem.comm().get(),ierr);
 
     ghosted_y.close();
     ghosted_w.close();
@@ -527,7 +442,7 @@ PetscErrorCode dampedCheck(SNES /*snes*/, Vec x, Vec y, Vec w, void *lsctx, Pets
     if (damping < 1.0)
     {
       //recalculate w=-damping*y + x
-      ierr = VecWAXPY(w, -damping, y, x); CHKERRABORT(libMesh::COMM_WORLD,ierr);
+      ierr = VecWAXPY(w, -damping, y, x); CHKERRABORT(problem.comm().get(),ierr);
       *changed_w = PETSC_TRUE;
     }
 
@@ -537,12 +452,12 @@ PetscErrorCode dampedCheck(SNES /*snes*/, Vec x, Vec y, Vec w, void *lsctx, Pets
       //Update the ghosted copy of w
       if (*changed_w == PETSC_TRUE)
       {
-        ierr = VecCopy(w, ghosted_w.vec()); CHKERRABORT(libMesh::COMM_WORLD,ierr);
+        ierr = VecCopy(w, ghosted_w.vec()); CHKERRABORT(problem.comm().get(),ierr);
         ghosted_w.close();
       }
 
       //Create vector to directly modify w
-      PetscVector<Number> vec_w(w, libMesh::CommWorld);
+      PetscVector<Number> vec_w(w, problem.comm());
 
       bool updatedSolution = problem.updateSolution(vec_w, ghosted_w);
       if (updatedSolution)
@@ -571,10 +486,10 @@ void petscSetupDampers(NonlinearImplicitSystem& sys)
 #else
   PetscErrorCode ierr = SNESGetLineSearch(snes, &linesearch);
 #endif
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(problem->comm().get(),ierr);
 
   ierr = SNESLineSearchSetPostCheck(linesearch, dampedCheck, problem);
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
+  CHKERRABORT(problem->comm().get(),ierr);
 #endif
 }
 
@@ -625,77 +540,15 @@ void petscSetDefaults(FEProblem & problem)
                                                 petscConverged,
                                                 &problem,
                                                 PETSC_NULL);
-    CHKERRABORT(libMesh::COMM_WORLD,ierr);
+    CHKERRABORT(nl.comm().get(),ierr);
     ierr = SNESSetConvergenceTest(snes,
                                   petscNonlinearConverged,
                                   &problem,
                                   PETSC_NULL);
-    CHKERRABORT(libMesh::COMM_WORLD,ierr);
+    CHKERRABORT(nl.comm().get(),ierr);
   }
 #endif
-
-
-  if (problem.getMooseApp().hasLegacyOutput())
-  {
-    /// \todo{Remove this when new output system is in place}
-    {
-      PetscErrorCode ierr;
-#if PETSC_VERSION_LESS_THAN(2,3,3)
-      ierr = SNESSetMonitor (snes, nonlinearMonitor, &problem, PETSC_NULL);
-#else
-      ierr = SNESMonitorSet (snes, nonlinearMonitor, &problem, PETSC_NULL);
-#endif
-      CHKERRABORT(libMesh::COMM_WORLD,ierr);
-    }
-
-    /// \todo{Remove this when new output system is in place}
-    if (problem.shouldPrintLinearResiduals())
-    {
-      PetscErrorCode ierr;
-#if PETSC_VERSION_LESS_THAN(2,3,3)
-      ierr = KSPSetMonitor (ksp, linearMonitor, &problem, PETSC_NULL);
-#else
-      ierr = KSPMonitorSet (ksp, linearMonitor, &problem, PETSC_NULL);
-#endif
-      CHKERRABORT(libMesh::COMM_WORLD,ierr);
-    }
-  }
-
 }
-
-void petscPrintLinearResiduals(FEProblem * problem_ptr, Console * console_ptr)
-{
-  NonlinearSystem & nl = problem_ptr->getNonlinearSystem();
-  PetscNonlinearSolver<Number> * petsc_solver = dynamic_cast<PetscNonlinearSolver<Number> *>(nl.sys().nonlinear_solver.get());
-  SNES snes = petsc_solver->snes();
-  KSP ksp;
-  SNESGetKSP(snes, &ksp);
-
-  PetscErrorCode ierr;
-#if PETSC_VERSION_LESS_THAN(2,3,3)
-  ierr = KSPSetMonitor (ksp, petscLinearMonitor, console_ptr, PETSC_NULL);
-#else
-  ierr = KSPMonitorSet (ksp, petscLinearMonitor, console_ptr, PETSC_NULL);
-#endif
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
-}
-
-void petscPrintNonlinearResiduals(FEProblem * problem_ptr, Console * console_ptr)
-{
-  NonlinearSystem & nl = problem_ptr->getNonlinearSystem();
-  PetscNonlinearSolver<Number> * petsc_solver = dynamic_cast<PetscNonlinearSolver<Number> *>(nl.sys().nonlinear_solver.get());
-  SNES snes = petsc_solver->snes();
-
-  PetscErrorCode ierr;
-#if PETSC_VERSION_LESS_THAN(2,3,3)
-  ierr = SNESSetMonitor (snes, petscNonlinearMonitor, console_ptr, PETSC_NULL);
-#else
-  ierr = SNESMonitorSet (snes, petscNonlinearMonitor, console_ptr, PETSC_NULL);
-#endif
-
-  CHKERRABORT(libMesh::COMM_WORLD,ierr);
-}
-
 } // Namespace PetscSupport
 } // Namespace MOOSE
 

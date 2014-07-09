@@ -33,7 +33,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./distance]
     type = NearestNodeDistanceAux
     variable = distance
@@ -96,6 +96,6 @@
   exodus = true
   [./console]
     type = Console
-    pref_log = true
+    perf_log = true
   [../]
 []

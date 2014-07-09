@@ -16,7 +16,7 @@
 #define CONSOLE_H
 
 // MOOSE includes
-#include "TableOutputter.h"
+#include "TableOutput.h"
 #include "FormattedTable.h"
 #include "Conversion.h"
 
@@ -33,7 +33,7 @@ InputParameters validParams<Console>();
  * An output object for writing to the console (screen)
  */
 class Console :
-  public TableOutputter
+  public TableOutput
 {
 public:
 
@@ -75,22 +75,6 @@ public:
   virtual std::string filename();
 
   /**
-   * A helper function for printing linear residuals via PETSc
-   * @param its A reference to the iteration number from PETSc
-   * @param norm A reference to the linear residual norm from PETSc
-   * @see PetscSupport::petscLinearMonitor
-   */
-  void linearMonitor(PetscInt & its, PetscReal & norm);
-
-  /**
-   * A helper function for printing linear residuals via PETSc
-   * @param its A reference to the iteration number from PETSc
-   * @param norm A reference to the linear residual norm from PETSc
-   * @see PetscSupport::petscLinearMonitor
-   */
-  void nonlinearMonitor(PetscInt & its, PetscReal & norm);
-
-  /**
    * Display the system information
    */
   void outputSystemInformation();
@@ -103,6 +87,11 @@ public:
 protected:
 
   /**
+   * Print the input file at the beginning of the simulation
+   */
+  virtual void outputInput();
+
+  /**
    * Prints the aux scalar variables table to the screen
    */
   virtual void outputScalarVariables();
@@ -113,29 +102,49 @@ protected:
   virtual void outputPostprocessors();
 
   /**
-   * Setups up PETSc to output the nonlinear/linear residuals
+   * Not implemented.
    */
-   virtual void petscSetup();
+  virtual void outputVectorPostprocessors() { mooseError("Can't currently output VectorPostprocessors to the screen"); };
 
   /**
-   * A helper function for outputing norms in color
+   * A helper function for outputting norms in color
    * @param old_norm The old residual norm to compare against
    * @param norm The current residual norm
    */
   std::string outputNorm(Real old_norm, Real norm);
 
-  /** Helper function function for stringstream formating
+  /** Helper function function for stringstream formatting
    * @see outputSimulationInformation()
    */
   void insertNewline(std::stringstream &oss, std::streampos &begin, std::streampos &curr);
 
   /**
-   * Write the file stream to the file
-   * This helper function writes the _file_output_stream to the file and clears the
-   * stream, by default the file is appended.
-   * @param append Toggle for appending the file
+   * Write message to screen and/or file
+   * @param message The desired message
+   * @param indent True if multiapp indenting is desired
    */
-  void writeStream(bool append = true);
+  void write(std::string message, bool indent = true);
+
+  /**
+   * Apply indentation to newlines in the supplied stream
+   * @param message Reference to the message being changed
+   */
+  void indentMessage(std::string & message);
+
+/**
+   * Write the file stream to the file
+   * @param append Toggle for appending the file
+   *
+   * This helper function writes the _file_output_stream to the file and clears the
+   * stream, by default the file is appended. This does nothing if 'output_file' is
+   * false.
+   */
+  void writeStreamToFile(bool append = true);
+
+  /**
+   * Print the L2-norms for each variable
+   */
+  void writeVariableNorms();
 
   /// The max number of table rows
   unsigned int _max_rows;
@@ -143,19 +152,13 @@ protected:
   /// The FormattedTable fit mode
   MooseEnum _fit_mode;
 
-  /// Toggle for controlling the use of color output
-  bool _use_color;
+  /// Toggle for outputting time in time and dt in scientific notation
+  bool _scientific_time;
 
-  /// Toggle for controlling the printing of linear residuals (requires _print_nonlinear = true)
-  bool _print_linear;
-
-  /// Toggle for controlling the printing of nonlinear residuals
-  bool _print_nonlinear;
-
-  /// Flag for controlling outputing console information to a file
+  /// Flag for controlling outputting console information to a file
   bool _write_file;
 
-  /// Flag for controlling outputing console information to screen
+  /// Flag for controlling outputting console information to screen
   bool _write_screen;
 
   /// Flag for writing detailed time step information
@@ -179,17 +182,59 @@ protected:
   /// State for setup performance log
   bool _setup_log;
 
+#ifdef LIBMESH_ENABLE_PERFORMANCE_LOGGING
+  /// Control the display libMesh performance log
+  bool _libmesh_log;
+#endif
+
   /// State for early setup log printing
   bool _setup_log_early;
 
   /// State for the performance log header information
   bool _perf_header;
 
+  /// Flag for writing all variable norms
+  bool _all_variable_norms;
+
+  /// Flag for writing outlier variable norms
+  bool _outlier_variable_norms;
+
+  /// Multipliers for coloring variable residual norms (default [2, 0.8])
+  std::vector<Real> _outlier_multiplier;
+
+  /// Number of significant digits
+  unsigned int _precision;
+
   /// Width used for printing simulation information
   static const unsigned int _field_width = 25;
 
   /// Line length for printing simulation information
   static const unsigned int _line_length = 100;
+
+private:
+
+  /**
+   * Add a message to the output streams
+   * @param message The message to add to the output streams
+   *
+   * Any call to this method will write the supplied message to the screen and/or file,
+   * following the same restrictions as outputStep and outputInitial.
+   *
+   * Calls to this method should be made via OutputWarehouse::mooseConsole so that the
+   * output stream buffer is cleaned up correctly. Thus, it is a private method.
+   */
+  void mooseConsole(const std::string & message);
+
+  /// State of the --timing command line argument from MooseApp
+  bool _timing;
+
+  /// Level of indent to add to output
+  std::string _multiapp_indent;
+
+  /// Reference to cached messages from calls to _console
+  const std::ostringstream & _console_buffer;
+
+  friend class OutputWarehouse;
 };
 
 #endif /* CONSOLE_H */

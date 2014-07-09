@@ -9,12 +9,13 @@
 #include "GapHeatPointSourceMaster.h"
 #include "GapHeatTransfer.h"
 #include "HeatConduction.h"
+#include "AnisoHeatConduction.h"
 #include "HeatConductionTimeDerivative.h"
 #include "HeatConductionMaterial.h"
+#include "AnisoHeatConductionMaterial.h"
 #include "HeatConductionBC.h"
 #include "BulkCoolantBC.h"
 #include "ThermalContactAuxBCsAction.h"
-#include "ThermalContactAuxKernelsAction.h"
 #include "ThermalContactAuxVarsAction.h"
 #include "ThermalContactBCsAction.h"
 #include "ThermalContactDiracKernelsAction.h"
@@ -33,7 +34,7 @@ InputParameters validParams<HeatConductionApp>()
 HeatConductionApp::HeatConductionApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   HeatConductionApp::registerObjects(_factory);
@@ -56,6 +57,7 @@ void
 HeatConductionApp::registerObjects(Factory & factory)
 {
   registerNamedKernel(HeatConductionKernel, "HeatConduction");
+  registerKernel(AnisoHeatConduction);
   registerKernel(HeatConductionTimeDerivative);
   registerKernel(HeatSource);
   registerBoundaryCondition(HeatConductionBC);
@@ -65,6 +67,7 @@ HeatConductionApp::registerObjects(Factory & factory)
   registerBoundaryCondition(CoupledConvectiveFlux);
   registerMaterial(GapConductance);
   registerMaterial(HeatConductionMaterial);
+  registerMaterial(AnisoHeatConductionMaterial);
   registerDiracKernel(GapHeatPointSourceMaster);
   registerPostprocessor(ThermalCond);
   registerConstraint(GapConductanceConstraint);
@@ -82,15 +85,13 @@ HeatConductionApp::associateSyntax(Syntax & syntax, ActionFactory & action_facto
 
 
   syntax.registerActionSyntax("ThermalContactAuxBCsAction",       "ThermalContact/*", "add_aux_kernel");
-  syntax.registerActionSyntax("ThermalContactAuxKernelsAction",   "ThermalContact/*", "add_aux_kernel");
   syntax.registerActionSyntax("ThermalContactAuxVarsAction",      "ThermalContact/*", "add_aux_variable");
   syntax.registerActionSyntax("ThermalContactBCsAction",          "ThermalContact/*", "add_bc");
   syntax.registerActionSyntax("ThermalContactDiracKernelsAction", "ThermalContact/*", "add_dirac_kernel");
   syntax.registerActionSyntax("ThermalContactMaterialsAction",    "ThermalContact/*", "add_material");
 
   registerAction(ThermalContactAuxBCsAction,       "add_aux_kernel");
-  registerAction(ThermalContactAuxKernelsAction,   "add_aux_kernel");
-  registerAction(ThermalContactAuxVarsAction,      "add_aux_variablekernel");
+  registerAction(ThermalContactAuxVarsAction,      "add_aux_variable");
   registerAction(ThermalContactBCsAction,          "add_bc");
   registerAction(ThermalContactDiracKernelsAction, "add_dirac_kernel");
   registerAction(ThermalContactMaterialsAction,    "add_material");

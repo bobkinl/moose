@@ -28,7 +28,7 @@ template<>
 InputParameters validParams<Checkpoint>()
 {
   // Get the parameters from the base classes
-  InputParameters params = validParams<FileOutputter>();
+  InputParameters params = validParams<FileOutput>();
 
   // Typical checkpoint options
   params.addParam<unsigned int>("num_files", 2, "Number of the restart files to save");
@@ -43,18 +43,20 @@ InputParameters validParams<Checkpoint>()
   params.suppressParameter<bool>("output_elemental_variables");
   params.suppressParameter<bool>("output_scalar_variables");
   params.suppressParameter<bool>("output_postprocessors");
+  params.suppressParameter<bool>("output_vector_postprocessors");
 
   return params;
 }
 
 Checkpoint::Checkpoint(const std::string & name, InputParameters & parameters) :
-    FileOutputter(name, parameters),
+    FileOutput(name, parameters),
     _num_files(getParam<unsigned int>("num_files")),
     _suffix(getParam<std::string>("suffix")),
     _binary(getParam<bool>("binary")),
     _restartable_data(_problem_ptr->getRestartableData()),
     _recoverable_data(_problem_ptr->getRecoverableData()),
     _material_property_storage(_problem_ptr->getMaterialPropertyStorage()),
+    _bnd_material_property_storage(_problem_ptr->getBndMaterialPropertyStorage()),
     _material_property_io(MaterialPropertyIO(*_problem_ptr)),
     _restartable_data_io(RestartableDataIO(*_problem_ptr))
 {
@@ -75,7 +77,7 @@ Checkpoint::filename()
          << std::setprecision(0)
          << std::setfill('0')
          << std::right
-         << _t_step;
+         << timeStep();
   return output.str();
 }
 
@@ -132,7 +134,7 @@ Checkpoint::output()
   _restartable_data_io.writeRestartableData(current_file_struct.restart, _restartable_data, _recoverable_data);
 
   // Write the material property data
-  if (_material_property_storage.hasStatefulProperties())
+  if (_material_property_storage.hasStatefulProperties() || _bnd_material_property_storage.hasStatefulProperties())
     _material_property_io.write(current_file_struct.material);
 
   // Remove old checkpoint files
@@ -159,7 +161,7 @@ Checkpoint::updateCheckpointFiles(CheckpointFileNames file_struct)
     _file_names.erase(_file_names.begin());
 
     // Get thread and proc information
-    processor_id_type proc_id = libMesh::processor_id();
+    processor_id_type proc_id = processor_id();
 
     // Delete checkpoint files (_mesh.cpr)
     remove(delete_files.checkpoint.c_str());
@@ -215,6 +217,12 @@ Checkpoint::outputScalarVariables()
 
 void
 Checkpoint::outputPostprocessors()
+{
+  mooseError("Invalid for Checkpoint output type");
+}
+
+void
+Checkpoint::outputVectorPostprocessors()
 {
   mooseError("Invalid for Checkpoint output type");
 }

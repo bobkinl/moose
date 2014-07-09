@@ -20,7 +20,7 @@ InputParameters validParams<LinearElasticityApp>()
 LinearElasticityApp::LinearElasticityApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   LinearElasticityApp::registerObjects(_factory);
@@ -52,6 +52,6 @@ LinearElasticityApp::registerObjects(Factory & factory)
 }
 
 void
-LinearElasticityApp::associateSyntax(Syntax & syntax, ActionFactory & action_factory)
+LinearElasticityApp::associateSyntax(Syntax & /*syntax*/, ActionFactory & /*action_factory*/)
 {
 }

@@ -24,7 +24,7 @@ template<>
 InputParameters validParams<Exodus>()
 {
   // Get the base class parameters
-  InputParameters params = validParams<OversampleOutputter>();
+  InputParameters params = validParams<OversampleOutput>();
 
   // Set the default padding to 3
   params.set<unsigned int>("padding") = 3;
@@ -32,14 +32,20 @@ InputParameters validParams<Exodus>()
   // Add description for the Exodus class
   params.addClassDescription("Object for output data in the Exodus II format");
 
+  // Disable the outputting of vector postprocessor data
+  params.suppressParameter<bool>("output_vector_postprocessors");
+
+  // Set outputting of the input to be on by default
+  params.set<bool>("output_input") = true;
+
   // Return the InputParameters
   return params;
 }
 
 Exodus::Exodus(const std::string & name, InputParameters parameters) :
-    OversampleOutputter(name, parameters),
+    OversampleOutput(name, parameters),
     _exodus_io_ptr(NULL),
-    _initialized(false),
+    _exodus_initialized(false),
     _exodus_num(declareRestartableData<unsigned int>("exodus_num", 0)),
     _recovering(_app.isRecovering())
 {
@@ -76,7 +82,7 @@ Exodus::outputSetup()
     // Set the recovering flag to false so that this special case is not triggered again
     _recovering = false;
 
-    // Set the append flag to true b/c on revover the file is being appended
+    // Set the append flag to true b/c on recover the file is being appended
     _exodus_io_ptr->append(true);
   }
   else
@@ -98,6 +104,7 @@ Exodus::outputSetup()
     _exodus_io_ptr->set_coordinate_offset(_app.getOutputPosition());
 }
 
+
 void
 Exodus::outputNodalVariables()
 {
@@ -105,21 +112,18 @@ Exodus::outputNodalVariables()
   _exodus_io_ptr->set_output_variables(getNodalVariableOutput());
 
   // Write the data via libMesh::ExodusII_IO
-  _exodus_io_ptr->write_timestep(filename(), *_es_ptr, _exodus_num, _time + _app.getGlobalTimeOffset());
+  _exodus_io_ptr->write_timestep(filename(), *_es_ptr, _exodus_num, time() + _app.getGlobalTimeOffset());
 
   // This satisfies the initialization of the ExodusII_IO object
-  _initialized = true;
+  _exodus_initialized = true;
 }
 
 void
 Exodus::outputElementalVariables()
 {
   // Make sure the the file is ready for writing of elemental data
-  if (!_initialized)
+  if (!_exodus_initialized || !hasNodalVariableOutput())
     outputEmptyTimestep();
-
-  std::vector<std::string> v = getElementalVariableOutput();
-  for (std::vector<std::string>::iterator it = v.begin(); it != v.end(); ++it)
 
   // Write the elemental data
   _exodus_io_ptr->set_output_variables(getElementalVariableOutput());
@@ -195,14 +199,20 @@ Exodus::output()
   _global_values.clear();
 
   // Call the output methods
-  OversampleOutputter::output();
+  OversampleOutput::output();
 
   // Write the global variables (populated by the output methods)
   if (!_global_values.empty())
   {
-    if (!_initialized)
+    if (!_exodus_initialized)
       outputEmptyTimestep();
     _exodus_io_ptr->write_global_data(_global_values, _global_names);
+  }
+
+  if (_output_input)
+  {
+    outputInput();
+    _output_input = false;
   }
 
   // Increment output call counter, which is reset by outputSetup
@@ -234,6 +244,6 @@ Exodus::outputEmptyTimestep()
 {
   // Write a timestep with no variables
   _exodus_io_ptr->set_output_variables(std::vector<std::string>());
-  _exodus_io_ptr->write_timestep(filename(), *_es_ptr, _exodus_num, _time + _app.getGlobalTimeOffset());
-  _initialized = true;
+  _exodus_io_ptr->write_timestep(filename(), *_es_ptr, _exodus_num, time() + _app.getGlobalTimeOffset());
+  _exodus_initialized = true;
 }

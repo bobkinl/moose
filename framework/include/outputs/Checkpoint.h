@@ -16,7 +16,7 @@
 #define CHECKPOINT_H
 
 // MOOSE includes
-#include "FileOutputter.h"
+#include "FileOutput.h"
 #include "MaterialPropertyStorage.h"
 #include "RestartableData.h"
 #include "MaterialPropertyIO.h"
@@ -51,7 +51,7 @@ struct CheckpointFileNames
  *
  */
 class Checkpoint:
-  public FileOutputter
+  public FileOutput
 {
 public:
 
@@ -93,6 +93,7 @@ protected:
   virtual void outputElementalVariables();
   virtual void outputScalarVariables();
   virtual void outputPostprocessors();
+  virtual void outputVectorPostprocessors();
   //@}
 
   void updateCheckpointFiles(CheckpointFileNames file_struct);
@@ -116,6 +117,9 @@ private:
 
   /// Reference to the material property storage
   const MaterialPropertyStorage & _material_property_storage;
+
+  /// Reference to the boundary material property storage
+  const MaterialPropertyStorage & _bnd_material_property_storage;
 
   /// MaterialProperty input/output interface
   MaterialPropertyIO _material_property_io;

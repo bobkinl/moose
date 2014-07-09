@@ -14,6 +14,10 @@ class RichardsPPenalty;
 template<>
 InputParameters validParams<RichardsPPenalty>();
 
+/**
+ * Kernel = a*(lower - variable) for variable<lower, and zero otherwise
+ * This is an attempt to enforce variable>=lower
+ */
 class RichardsPPenalty : public Kernel
 {
 public:
@@ -28,8 +32,14 @@ protected:
   virtual Real computeQpOffDiagJacobian(unsigned int jvar);
 
 private:
+
+  /// Kernel = a*(_lower - variable) for variable<lower and zero otherwise
   Real _a;
+
+  /// Kernel = a*(_lower - variable) for variable<lower and zero otherwise
   VariableValue & _lower;
+
+  /// moose variable number of the _lower variable (needed for OffDiagJacobian)
   unsigned int _lower_var_num;
 
 };

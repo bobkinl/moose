@@ -18,8 +18,11 @@
 #include <vector>
 #include <map>
 #include <sstream>
+#include <algorithm>
 
-#include "XTermConstants.h"
+// libMesh includes
+#include "libmesh/parallel.h"
+
 namespace MooseUtils
 {
   /**
@@ -62,7 +65,7 @@ namespace MooseUtils
    * This function implements a parallel barrier function but writes progress
    * to stdout.
    */
-  void parallelBarrierNotify();
+  void parallelBarrierNotify(const libMesh::Parallel::Communicator & comm);
 
   /**
    * Function tests if the supplied filename as the desired extension
@@ -83,23 +86,6 @@ namespace MooseUtils
         return true;
     return false;
   }
-
-  /**
-   * Returns a character string to produce a specific color in terminals supporting
-   * color. The list of color constants is available in XTermConstants.h
-   * @param color (from XTermConstants.h)
-   * @param text The output to be converted to text and colored
-   */
-  template <typename T>
-  std::string
-  colorText(std::string color, T text)
-  {
-    std::ostringstream oss;
-    oss << std::scientific;
-    oss << color << text << COLOR_DEFAULT;
-    return oss.str();
-  }
-
 }
 
 #endif //MOOSEUTILS_H

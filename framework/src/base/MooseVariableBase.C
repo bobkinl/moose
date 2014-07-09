@@ -27,19 +27,12 @@ MooseVariableBase::MooseVariableBase(unsigned int var_num, SystemBase & sys, Ass
     _variable(sys.system().variable(_var_num)),
     _assembly(assembly),
     _dof_map(sys.dofMap()),
-    _scaling_factor(1.0),
-    _is_nl(var_kind == Moose::VAR_NONLINEAR)
+    _scaling_factor(1.0)
 {
 }
 
 MooseVariableBase::~MooseVariableBase()
 {
-}
-
-unsigned int
-MooseVariableBase::index() const
-{
-  return _var_num;
 }
 
 unsigned int

@@ -38,13 +38,13 @@ public:
    * Get the list of all dirac kernels
    * @return The list of all dirac kernels
    */
-  const std::vector<DiracKernel *> & all() { return _dirac_kernels; }
+  const std::vector<DiracKernel *> & all() const { return _dirac_kernels; }
 
   /**
-   * Adds a dirac kernel
-   * @param DiracKernel Kernel being added
+   * Adds a Dirac kernel
+   * @param kernel The DiracKernel being added
    */
-  void addDiracKernel(DiracKernel *DiracKernel);
+  void addDiracKernel(DiracKernel * kernel);
 
 protected:
   /// All dirac kernels

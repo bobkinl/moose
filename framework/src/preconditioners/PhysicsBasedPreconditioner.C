@@ -46,7 +46,7 @@ InputParameters validParams<PhysicsBasedPreconditioner>()
 
 PhysicsBasedPreconditioner::PhysicsBasedPreconditioner (const std::string & name, InputParameters params) :
     MoosePreconditioner(name, params),
-    Preconditioner<Number>(libMesh::CommWorld),
+    Preconditioner<Number>(MoosePreconditioner::_communicator),
     _nl(_fe_problem.getNonlinearSystem())
 {
   unsigned int num_systems = _nl.sys().n_vars();
@@ -75,8 +75,8 @@ PhysicsBasedPreconditioner::PhysicsBasedPreconditioner (const std::string & name
       std::vector<std::vector<unsigned int> > off_diag(n_vars);
       for (unsigned int i = 0; i < getParam<std::vector<std::string> >("off_diag_row").size(); i++)
       {
-        unsigned int row = nl.getVariable(0, getParam<std::vector<std::string> >("off_diag_row")[i]).index();
-        unsigned int column = nl.getVariable(0, getParam<std::vector<std::string> >("off_diag_column")[i]).index();
+        unsigned int row = nl.getVariable(0, getParam<std::vector<std::string> >("off_diag_row")[i]).number();
+        unsigned int column = nl.getVariable(0, getParam<std::vector<std::string> >("off_diag_column")[i]).number();
         (*cm)(row, column) = 1;
       }
 
@@ -151,7 +151,7 @@ PhysicsBasedPreconditioner::addSystem(unsigned int var, std::vector<unsigned int
   _pre_type[var] = type;
 
   _off_diag_mats[var].resize(off_diag.size());
-  for(unsigned int i=0;i<off_diag.size();i++)
+  for (unsigned int i=0;i<off_diag.size();i++)
   {
     //Add the matrix to hold the off-diagonal piece
     _off_diag_mats[var][i] = &precond_system.add_matrix(_nl.sys().variable_name(off_diag[i]));
@@ -174,17 +174,17 @@ PhysicsBasedPreconditioner::init ()
   if (_solve_order.size() == 0)
   {
     _solve_order.resize(num_systems);
-    for(unsigned int i=0;i<num_systems;i++)
+    for (unsigned int i=0;i<num_systems;i++)
       _solve_order[i]=i;
   }
 
   //Loop over variables
-  for(unsigned int system_var=0; system_var<num_systems; system_var++)
+  for (unsigned int system_var=0; system_var<num_systems; system_var++)
   {
     LinearImplicitSystem & u_system = *_systems[system_var];
 
     if (!_preconditioners[system_var])
-      _preconditioners[system_var] = Preconditioner<Number>::build(libMesh::CommWorld);
+      _preconditioners[system_var] = Preconditioner<Number>::build(MoosePreconditioner::_communicator);
 
     // we have to explicitly set the matrix in the preconditioner, because h-adaptivity could have changed it and we have to work with the current one
     Preconditioner<Number> * preconditioner = _preconditioners[system_var];
@@ -203,14 +203,14 @@ PhysicsBasedPreconditioner::setup()
   const unsigned int num_systems = _systems.size();
 
   //Loop over variables
-  for(unsigned int system_var=0; system_var<num_systems; system_var++)
+  for (unsigned int system_var=0; system_var<num_systems; system_var++)
   {
     LinearImplicitSystem & u_system = *_systems[system_var];
 
     //Compute the diagonal block... storing the result in the system matrix
     _fe_problem.computeJacobianBlock(*u_system.matrix, u_system, system_var, system_var);
 
-    for(unsigned int diag=0;diag<_off_diag[system_var].size();diag++)
+    for (unsigned int diag=0;diag<_off_diag[system_var].size();diag++)
     {
       unsigned int coupled_var = _off_diag[system_var][diag];
       std::string coupled_name = _nl.sys().variable_name(coupled_var);
@@ -229,11 +229,11 @@ PhysicsBasedPreconditioner::apply(const NumericVector<Number> & x, NumericVector
   MooseMesh & mesh = _fe_problem.mesh();
 
   //Zero out the solution vectors
-  for(unsigned int sys=0; sys<num_systems; sys++)
+  for (unsigned int sys=0; sys<num_systems; sys++)
     _systems[sys]->solution->zero();
 
   //Loop over solve order
-  for(unsigned int i=0; i<_solve_order.size(); i++)
+  for (unsigned int i=0; i<_solve_order.size(); i++)
   {
     unsigned int system_var = _solve_order[i];
 
@@ -246,7 +246,7 @@ PhysicsBasedPreconditioner::apply(const NumericVector<Number> & x, NumericVector
 
     //Modify the RHS by subtracting off the matvecs of the solutions for the other preconditioning
     //systems with the off diagonal blocks in this system.
-    for(unsigned int diag=0;diag<_off_diag[system_var].size();diag++)
+    for (unsigned int diag=0;diag<_off_diag[system_var].size();diag++)
     {
       unsigned int coupled_var = _off_diag[system_var][diag];
       LinearImplicitSystem & coupled_system = *_systems[coupled_var];
@@ -272,7 +272,7 @@ PhysicsBasedPreconditioner::apply(const NumericVector<Number> & x, NumericVector
   }
 
   //Copy the solutions out
-  for(unsigned int system_var=0; system_var<num_systems; system_var++)
+  for (unsigned int system_var=0; system_var<num_systems; system_var++)
   {
     LinearImplicitSystem & u_system = *_systems[system_var];
 

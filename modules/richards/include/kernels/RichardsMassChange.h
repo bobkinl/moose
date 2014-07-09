@@ -7,7 +7,7 @@
 #define RICHARDSMASSCHANGE
 
 #include "TimeDerivative.h"
-#include "RichardsPorepressureNames.h"
+#include "RichardsVarNames.h"
 
 // Forward Declarations
 class RichardsMassChange;
@@ -15,6 +15,12 @@ class RichardsMassChange;
 template<>
 InputParameters validParams<RichardsMassChange>();
 
+/**
+ * Kernel = (mass - mass_old)/dt
+ * where mass = porosity*density*saturation
+ * This is used for the time derivative in Richards simulations
+ * Note that it is not lumped, so usually you want to use RichardsLumpedMassChange instead
+ */
 class RichardsMassChange : public TimeDerivative
 {
 public:
@@ -29,29 +35,43 @@ protected:
 
   virtual Real computeQpOffDiagJacobian(unsigned int jvar);
 
-  const RichardsPorepressureNames & _pp_name_UO;
+  /// holds info on the Richards variables
+  const RichardsVarNames & _richards_name_UO;
+
+  /**
+   * the Richards variable number
+   * eg, if richards name = 'pwater pgas poil', and this
+   * kernel is for pgas, then _pvar = 1
+   */
   unsigned int _pvar;
 
+  /// whether to use SUPG for this kernel (not recommended)
   bool _use_supg;
 
-  MaterialProperty<Real> &_porosity;
-  MaterialProperty<Real> &_porosity_old;
+  /// fluid mass (or fluid masses in multiphase) at quadpoints
+  MaterialProperty<std::vector<Real> > &_mass;
 
-  MaterialProperty<std::vector<Real> > &_sat_old;
+  /// d(fluid mass_i)/d(var_j)
+  MaterialProperty<std::vector<std::vector<Real> > > &_dmass;
 
-  MaterialProperty<std::vector<Real> > &_sat;
-  MaterialProperty<std::vector<std::vector<Real> > > &_dsat;
-  MaterialProperty<std::vector<std::vector<std::vector<Real> > > > &_d2sat;
+  /// old value of fluid mass (or fluid masses in multiphase) at quadpoints
+  MaterialProperty<std::vector<Real> > &_mass_old;
 
-  MaterialProperty<std::vector<Real> > &_density_old;
-
-  MaterialProperty<std::vector<Real> > &_density;
-  MaterialProperty<std::vector<Real> > &_ddensity;
-  MaterialProperty<std::vector<Real> > &_d2density;
-
+  /// tau_SUPG
   MaterialProperty<std::vector<RealVectorValue> >&_tauvel_SUPG;
-  MaterialProperty<std::vector<RealTensorValue> >&_dtauvel_SUPG_dgradp;
-  MaterialProperty<std::vector<RealVectorValue> >&_dtauvel_SUPG_dp;
+
+  /// derivative of tau_SUPG wrt grad(variable)
+  MaterialProperty<std::vector<std::vector<RealTensorValue> > >&_dtauvel_SUPG_dgradv;
+
+  /// deriv of tau_SUPG wrt variable
+  MaterialProperty<std::vector<std::vector<RealVectorValue> > >&_dtauvel_SUPG_dv;
+
+  /**
+   * Derivative of residual with respect to wrt_num Richards variable
+   * This is used by both computeQpJacobian and computeQpOffDiagJacobian
+   * @param wrt_num take the derivative of the residual wrt this Richards variable
+   */
+  Real computeQpJac(unsigned int wrt_num);
 
 };
 

@@ -33,6 +33,9 @@ InputParameters validParams<GapConductance>()
   // Common
   params.addParam<Real>("min_gap", 1e-6, "A minimum gap size");
   params.addParam<Real>("max_gap", 1e6, "A maximum gap size");
+  params.addParam<bool>("cylindrical_gap", false, "Use cylindrical wall heat flux");
+  params.addParam<Real>("min_denom", 1e-6, "A minimum value for r*(r2/r1) term in cylindrical wall heat flux");
+  params.addParam<Real>("max_denom", 1e6, "A maximum value for r*(r2/r1) term in cylindrical wall heat flux");
 
   params.addParam<Real>("stefan_boltzmann", 5.669e-8, "The Stefan-Boltzmann constant");
   params.addParam<Real>("emissivity_1", 0.0, "The emissivity of the fuel surface");
@@ -50,6 +53,9 @@ GapConductance::GapConductance(const std::string & name, InputParameters paramet
    _quadrature(getParam<bool>("quadrature")),
    _gap_temp(0),
    _gap_distance(88888),
+   _radius(0),
+   _r1(0),
+   _r2(0),
    _has_info(false),
    _gap_distance_value(_quadrature ? _zero : coupledValue("gap_distance")),
    _gap_temp_value(_quadrature ? _zero : coupledValue("gap_temp")),
@@ -63,28 +69,31 @@ GapConductance::GapConductance(const std::string & name, InputParameters paramet
                 1/getParam<Real>("emissivity_1") + 1/getParam<Real>("emissivity_2") - 1 : 0 ),
    _min_gap(getParam<Real>("min_gap")),
    _max_gap(getParam<Real>("max_gap")),
+   _cylindrical_gap(getParam<bool>("cylindrical_gap")),
+   _min_denom(getParam<Real>("min_denom")),
+   _max_denom(getParam<Real>("max_denom")),
    _temp_var(_quadrature ? getVar("variable",0) : NULL),
    _penetration_locator(NULL),
    _serialized_solution(_quadrature ? &_temp_var->sys().currentSolution() : NULL),
    _dof_map(_quadrature ? &_temp_var->sys().dofMap() : NULL),
    _warnings(getParam<bool>("warnings"))
 {
-  if(_quadrature)
+  if (_quadrature)
   {
-    if(!parameters.isParamValid("paired_boundary"))
+    if (!parameters.isParamValid("paired_boundary"))
       mooseError(std::string("No 'paired_boundary' provided for ") + _name);
   }
   else
   {
-    if(!isCoupled("gap_distance"))
+    if (!isCoupled("gap_distance"))
       mooseError(std::string("No 'gap_distance' provided for ") + _name);
 
-    if(!isCoupled("gap_temp"))
+    if (!isCoupled("gap_temp"))
       mooseError(std::string("No 'gap_temp' provided for ") + _name);
   }
 
 
-  if(_quadrature)
+  if (_quadrature)
   {
     _penetration_locator = &_subproblem.geomSearchData().getQuadraturePenetrationLocator(parameters.get<BoundaryName>("paired_boundary"),
                                                                                          getParam<std::vector<BoundaryName> >("boundary")[0],
@@ -110,7 +119,10 @@ GapConductance::computeQpConductance()
 Real
 GapConductance::h_conduction()
 {
-  return gapK()/gapLength(-(_gap_distance), _min_gap, _max_gap);
+  if (_cylindrical_gap)
+    return gapK()/gapCyl(_radius, _r1, _r2, _min_denom, _max_denom);
+  else
+    return gapK()/gapLength(-(_gap_distance), _min_gap, _max_gap);
 }
 
 
@@ -167,7 +179,7 @@ GapConductance::gapLength(Real distance, Real min_gap, Real max_gap)
 {
   Real gap_L = distance;
 
-  if(gap_L > max_gap)
+  if (gap_L > max_gap)
   {
     gap_L = max_gap;
   }
@@ -175,6 +187,23 @@ GapConductance::gapLength(Real distance, Real min_gap, Real max_gap)
   gap_L = std::max(min_gap, gap_L);
 
   return gap_L;
+}
+
+Real
+GapConductance::gapCyl(Real radius, Real r1, Real r2, Real min_denom, Real max_denom)
+{
+  Real denominator = radius*std::log(r2/r1);
+
+  if (denominator > max_denom)
+  {
+    denominator = max_denom;
+  }
+  else if (denominator < min_denom)
+  {
+    denominator =  min_denom;
+  }
+
+  return denominator;
 }
 
 
@@ -200,12 +229,11 @@ GapConductance::gapK()
 void
 GapConductance::computeGapValues()
 {
-  if(!_quadrature)
+  if (!_quadrature)
   {
     _has_info = true;
     _gap_temp = _gap_temp_value[_qp];
     _gap_distance = _gap_distance_value[_qp];
-    return;
   }
   else
   {
@@ -225,9 +253,9 @@ GapConductance::computeGapValues()
       std::vector<std::vector<Real> > & slave_side_phi = pinfo->_side_phi;
       std::vector<unsigned int> slave_side_dof_indices;
 
-      _dof_map->dof_indices(slave_side, slave_side_dof_indices, _temp_var->index());
+      _dof_map->dof_indices(slave_side, slave_side_dof_indices, _temp_var->number());
 
-      for(unsigned int i=0; i<slave_side_dof_indices.size(); ++i)
+      for (unsigned int i=0; i<slave_side_dof_indices.size(); ++i)
       {
         //The zero index is because we only have one point that the phis are evaluated at
         _gap_temp += slave_side_phi[i][0] * (*(*_serialized_solution))(slave_side_dof_indices[i]);
@@ -236,14 +264,25 @@ GapConductance::computeGapValues()
     else
     {
       if (_warnings)
-      {
-        std::stringstream msg;
-        msg << "No gap value information found for node ";
-        msg << qnode->id();
-        msg << " on processor ";
-        msg << libMesh::processor_id();
-        mooseWarning( msg.str() );
-      }
+        mooseWarning("No gap value information found for node " << qnode->id() << " on processor " << processor_id() << " at coordinate " << Point(*qnode));
     }
+  }
+
+  if (_cylindrical_gap)
+  {
+    if (_normals[_qp](0) > 0)
+    {
+      _r1 = _q_point[_qp](0);
+      _r2 = _q_point[_qp](0) - _gap_distance; // note, _gap_distance is negative
+      _radius = _r1;
+    }
+    else if (_normals[_qp](0) < 0)
+    {
+      _r1 = _q_point[_qp](0) + _gap_distance;
+      _r2 = _q_point[_qp](0);
+      _radius = _r2;
+    }
+    else
+      mooseError( "Issue with cylindrical flux calc. normals. \n");
   }
 }

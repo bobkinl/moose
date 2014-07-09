@@ -1,3 +1,16 @@
+/****************************************************************/
+/*               DO NOT MODIFY THIS HEADER                      */
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*           (c) 2010 Battelle Energy Alliance, LLC             */
+/*                   ALL RIGHTS RESERVED                        */
+/*                                                              */
+/*          Prepared by Battelle Energy Alliance, LLC           */
+/*            Under Contract No. DE-AC07-05ID14517              */
+/*            With the U. S. Department of Energy               */
+/*                                                              */
+/*            See COPYRIGHT for full restrictions               */
+/****************************************************************/
 #include "libmesh/libmesh_config.h"
 
 #ifdef LIBMESH_HAVE_DTK
@@ -34,13 +47,13 @@ DTKInterpolationEvaluator::evaluate(const Teuchos::ArrayRCP<GlobalOrdinal>& elem
   Teuchos::ArrayRCP<Number> values(num_values);
   DataTransferKit::FieldContainer<Number> evaluations(values, 1);
 
-  for(GlobalOrdinal i=0; i<num_values; i++)
+  for (GlobalOrdinal i=0; i<num_values; i++)
   {
     Elem * elem = mesh.elem(elements[i]);
 
     Point p;
 
-    for(unsigned int j=0; j<dim; j++)
+    for (unsigned int j=0; j<dim; j++)
       p(j) = coords[(j*num_values)+i] - _offset(j);
 
     const Point mapped_point(FEInterface::inverse_map(dim, dof_map.variable_type(0), elem, p));

@@ -9,7 +9,7 @@
 #include "SideIntegralVariablePostprocessor.h"
 #include "MaterialPropertyInterface.h"
 #include "FunctionInterface.h"
-#include "RichardsPorepressureNames.h"
+#include "RichardsVarNames.h"
 
 //Forward Declarations
 class RichardsExcavFlow;
@@ -18,6 +18,9 @@ class Function;
 template<>
 InputParameters validParams<RichardsExcavFlow>();
 
+/**
+ * Records total mass flow into an excavation defined by a RichardsExcavGeom function
+ */
 class RichardsExcavFlow :
 public SideIntegralVariablePostprocessor,
 public FunctionInterface
@@ -28,14 +31,16 @@ public:
 protected:
   virtual Real computeQpIntegral();
 
-  const RichardsPorepressureNames & _pp_name_UO;
+  /// holds info regarding the Richards variables
+  const RichardsVarNames & _richards_name_UO;
+
+  /// the richards variable number for which we want the mass flow
   unsigned int _pvar;
 
-  MaterialProperty<std::vector<Real> > &_viscosity;
-  MaterialProperty<RealVectorValue> &_gravity;
-  MaterialProperty<RealTensorValue> & _permeability;
-  MaterialProperty<std::vector<Real> > &_rel_perm;
-  MaterialProperty<std::vector<Real> > &_density;
+  /// mass-flux of fluid (a vector in the multicomponent case)
+  MaterialProperty<std::vector<RealVectorValue> > &_flux;
+
+  /// the RichardsExcavGeom that defines where on the boundary we'll compute the mass flux
   Function & _func;
 };
 

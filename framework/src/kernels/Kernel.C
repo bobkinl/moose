@@ -25,101 +25,18 @@
 template<>
 InputParameters validParams<Kernel>()
 {
-  InputParameters params = validParams<MooseObject>();
-  params += validParams<TransientInterface>();
-  params += validParams<BlockRestrictable>();
-  params += validParams<RandomInterface>();
-
-  params.addRequiredParam<NonlinearVariableName>("variable", "The name of the variable that this kernel operates on");
-  params.addParam<std::vector<AuxVariableName> >("save_in", "The name of auxiliary variables to save this Kernel's residual contributions to.  Everything about that variable must match everything about this variable (the type, what blocks it's on, etc.)");
-  params.addParam<std::vector<AuxVariableName> >("diag_save_in", "The name of auxiliary variables to save this Kernel's diagonal jacobian contributions to.  Everything about that variable must match everything about this variable (the type, what blocks it's on, etc.)");
-
-  // testing, dude
-  params.addParam<bool>("use_displaced_mesh", false, "Whether or not this object should use the displaced mesh for computation.  Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.");
-  params.addParamNamesToGroup("use_displaced_mesh", "Advanced");
-
+  InputParameters params = validParams<KernelBase>();
   params.registerBase("Kernel");
-
-  params.addParamNamesToGroup("diag_save_in save_in", "Advanced");
-
   return params;
 }
 
 Kernel::Kernel(const std::string & name, InputParameters parameters) :
-    MooseObject(name, parameters),
-    BlockRestrictable(name, parameters),
-    SetupInterface(parameters),
-    CoupleableMooseVariableDependencyIntermediateInterface(parameters, false),
-    FunctionInterface(parameters),
-    UserObjectInterface(parameters),
-    TransientInterface(parameters, name, "kernels"),
-    PostprocessorInterface(parameters),
-    MaterialPropertyInterface(parameters),
-    RandomInterface(name, parameters, *parameters.get<FEProblem *>("_fe_problem"), parameters.get<THREAD_ID>("_tid"), false),
-    GeometricSearchInterface(parameters),
-    Restartable(name, parameters, "Kernels"),
-    ZeroInterface(parameters),
-    _subproblem(*parameters.get<SubProblem *>("_subproblem")),
-    _fe_problem(*parameters.get<FEProblem *>("_fe_problem")),
-    _sys(*parameters.get<SystemBase *>("_sys")),
-    _tid(parameters.get<THREAD_ID>("_tid")),
-    _assembly(_subproblem.assembly(_tid)),
-    _var(_sys.getVariable(_tid, parameters.get<NonlinearVariableName>("variable"))),
-    _mesh(_subproblem.mesh()),
-//    _dim(_mesh.dimension()),
-
-    _current_elem(_var.currentElem()),
-    _current_elem_volume(_assembly.elemVolume()),
-    _q_point(_assembly.qPoints()),
-    _qrule(_assembly.qRule()),
-    _JxW(_assembly.JxW()),
-    _coord(_assembly.coordTransformation()),
-
-    _phi(_assembly.phi()),
-    _grad_phi(_assembly.gradPhi()),
-
-    _test(_var.phi()),
-    _grad_test(_var.gradPhi()),
-
+    KernelBase(name, parameters),
     _u(_is_implicit ? _var.sln() : _var.slnOld()),
     _grad_u(_is_implicit ? _var.gradSln() : _var.gradSlnOld()),
     _u_dot(_var.uDot()),
-    _du_dot_du(_var.duDotDu()),
-
-    _save_in_strings(parameters.get<std::vector<AuxVariableName> >("save_in")),
-    _diag_save_in_strings(parameters.get<std::vector<AuxVariableName> >("diag_save_in"))
+    _du_dot_du(_var.duDotDu())
 {
-  _save_in.resize(_save_in_strings.size());
-  _diag_save_in.resize(_diag_save_in_strings.size());
-
-  for(unsigned int i=0; i<_save_in_strings.size(); i++)
-  {
-    MooseVariable * var = &_subproblem.getVariable(_tid, _save_in_strings[i]);
-
-    if (var->feType() != _var.feType())
-      mooseError("Error in " + _name + ". When saving residual values in an Auxiliary variable the AuxVariable must be the same type as the nonlinear variable the object is acting on.");
-
-    _save_in[i] = var;
-    var->sys().addVariableToZeroOnResidual(_save_in_strings[i]);
-    addMooseVariableDependency(var);
-  }
-
-  _has_save_in = _save_in.size() > 0;
-
-
-  for(unsigned int i=0; i<_diag_save_in_strings.size(); i++)
-  {
-    MooseVariable * var = &_subproblem.getVariable(_tid, _diag_save_in_strings[i]);
-
-    if (var->feType() != _var.feType())
-      mooseError("Error in " + _name + ". When saving diagonal Jacobian values in an Auxiliary variable the AuxVariable must be the same type as the nonlinear variable the object is acting on.");
-
-    _diag_save_in[i] = var;
-    var->sys().addVariableToZeroOnJacobian(_diag_save_in_strings[i]);
-    addMooseVariableDependency(var);
-  }
-
-  _has_diag_save_in = _diag_save_in.size() > 0;
 }
 
 Kernel::~Kernel()
@@ -129,7 +46,7 @@ Kernel::~Kernel()
 void
 Kernel::computeResidual()
 {
-  DenseVector<Number> & re = _assembly.residualBlock(_var.index());
+  DenseVector<Number> & re = _assembly.residualBlock(_var.number());
   _local_re.resize(re.size());
   _local_re.zero();
 
@@ -143,7 +60,7 @@ Kernel::computeResidual()
   if (_has_save_in)
   {
     Threads::spin_mutex::scoped_lock lock(Threads::spin_mtx);
-    for(unsigned int i=0; i<_save_in.size(); i++)
+    for (unsigned int i=0; i<_save_in.size(); i++)
       _save_in[i]->sys().solution().add_vector(_local_re, _save_in[i]->dofIndices());
   }
 }
@@ -151,7 +68,7 @@ Kernel::computeResidual()
 void
 Kernel::computeJacobian()
 {
-  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), _var.index());
+  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), _var.number());
   _local_ke.resize(ke.m(), ke.n());
   _local_ke.zero();
 
@@ -166,11 +83,11 @@ Kernel::computeJacobian()
   {
     unsigned int rows = ke.m();
     DenseVector<Number> diag(rows);
-    for(unsigned int i=0; i<rows; i++)
+    for (unsigned int i=0; i<rows; i++)
       diag(i) = _local_ke(i,i);
 
     Threads::spin_mutex::scoped_lock lock(Threads::spin_mtx);
-    for(unsigned int i=0; i<_diag_save_in.size(); i++)
+    for (unsigned int i=0; i<_diag_save_in.size(); i++)
       _diag_save_in[i]->sys().solution().add_vector(diag, _diag_save_in[i]->dofIndices());
   }
 }
@@ -178,11 +95,11 @@ Kernel::computeJacobian()
 void
 Kernel::computeOffDiagJacobian(unsigned int jvar)
 {
-  if (jvar == _var.index())
+  if (jvar == _var.number())
     computeJacobian();
   else
   {
-    DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), jvar);
+    DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), jvar);
 
     for (_i=0; _i<_test.size(); _i++)
       for (_j=0; _j<_phi.size(); _j++)
@@ -196,7 +113,7 @@ Kernel::computeOffDiagJacobian(unsigned int jvar)
 void
 Kernel::computeOffDiagJacobianScalar(unsigned int jvar)
 {
-  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), jvar);
+  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), jvar);
   MooseVariableScalar & jv = _sys.getScalarVariable(_tid, jvar);
 
   for (_i = 0; _i < _test.size(); _i++)
@@ -217,20 +134,7 @@ Kernel::computeQpOffDiagJacobian(unsigned int /*jvar*/)
   return 0;
 }
 
-
 void
 Kernel::precalculateResidual()
 {
-}
-
-MooseVariable &
-Kernel::variable()
-{
-  return _var;
-}
-
-SubProblem &
-Kernel::subProblem()
-{
-  return _subproblem;
 }

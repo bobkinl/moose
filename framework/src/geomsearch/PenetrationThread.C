@@ -37,7 +37,7 @@ PenetrationThread::PenetrationThread(SubProblem & subproblem,
                                      bool do_normal_smoothing,
                                      Real normal_smoothing_distance,
                                      PenetrationLocator::NORMAL_SMOOTHING_METHOD normal_smoothing_method,
-                                     std::vector<FEBase * > & fes,
+                                     std::vector<std::vector<FEBase *> > & fes,
                                      FEType & fe_type,
                                      NearestNodeLocator & nearest_node,
                                      std::map<unsigned int, std::vector<unsigned int> > & node_to_elem_map,
@@ -97,8 +97,6 @@ PenetrationThread::operator() (const NodeIdRange & range)
   ParallelUniqueId puid;
   _tid = puid.id;
 
-  FEBase * fe = _fes[_tid];
-
   //Must get the variables every time this is run because _tid can change
   if (_do_normal_smoothing &&
       _normal_smoothing_method == PenetrationLocator::NSM_NODAL_NORMAL_BASED)
@@ -113,7 +111,7 @@ PenetrationThread::operator() (const NodeIdRange & range)
     const Node & node = _mesh.node(*nd);
 
     // We're going to get a reference to the pointer for the pinfo for this node
-    // This will alow us to manipulate this pointer without having to go through
+    // This will allow us to manipulate this pointer without having to go through
     // the _penetration_info map... meaning this is the only mutex we'll have to do!
     pinfo_mutex.lock();
     PenetrationInfo * & info = _penetration_info[node.id()];
@@ -125,6 +123,8 @@ PenetrationThread::operator() (const NodeIdRange & range)
     // See if we already have info about this node
     if (info)
     {
+      FEBase * fe = _fes[_tid][info->_side->dim()];
+
       if ((!_update_location || !info->_update) && info->_distance >= 0)
       {
         const Point contact_ref = info->_closest_point_ref;
@@ -179,7 +179,7 @@ PenetrationThread::operator() (const NodeIdRange & range)
       const Node * closest_node = _nearest_node.nearestNode(node.id());
       std::vector<unsigned int> & closest_elems = _node_to_elem_map[closest_node->id()];
 
-      for(unsigned int j=0; j<closest_elems.size(); j++)
+      for (unsigned int j=0; j<closest_elems.size(); j++)
       {
         unsigned int elem_id = closest_elems[j];
         const Elem * elem = _mesh.elem(elem_id);
@@ -352,6 +352,7 @@ PenetrationThread::operator() (const NodeIdRange & range)
               }
             }
 
+            FEBase * fe = _fes[_tid][p_info[face_index]->_side->dim()];
             std::vector<Point> points(1);
             points[0] = p_info[face_index]->_closest_point_ref;
             fe->reinit(p_info[face_index]->_side, &points);
@@ -383,7 +384,7 @@ PenetrationThread::operator() (const NodeIdRange & range)
               i+=2;
             }
           }
-          while(i<p_info.size() && best<p_info.size());
+          while (i<p_info.size() && best<p_info.size());
           if (best < p_info.size())
           {
             switchInfo( info, p_info[best] );
@@ -401,6 +402,7 @@ PenetrationThread::operator() (const NodeIdRange & range)
     else
     {
       smoothNormal(info, p_info);
+      FEBase * fe = _fes[_tid][info->_side->dim()];
       computeSlip( *fe, *info );
     }
 
@@ -690,13 +692,14 @@ PenetrationThread::findRidgeContactPoint(Point &contact_point,
     //with face normal vectors to see which face we're closer to.
 //  }
 
-  FEBase * fe = _fes[_tid];
+  FEBase * fe = NULL;
   std::vector<Point> points(1);
 
   //We have to pick one of the two faces to own the contact point.  It doesn't really matter
   //which one we pick.  For repeatibility, pick the face with the lowest index.
   if (index1<index2)
   {
+    fe = _fes[_tid][pi1->_side->dim()];
     contact_point_ref = closest_coor_ref1;
     points[0] = closest_coor_ref1;
     fe->reinit(pi1->_side, &points);
@@ -704,6 +707,7 @@ PenetrationThread::findRidgeContactPoint(Point &contact_point,
   }
   else
   {
+    fe = _fes[_tid][pi2->_side->dim()];
     contact_point_ref = closest_coor_ref2;
     points[0] = closest_coor_ref2;
     fe->reinit(pi2->_side, &points);
@@ -1655,7 +1659,7 @@ PenetrationThread::createInfoForElem(std::vector<PenetrationInfo*> &thisElemInfo
       break;
     }
 
-    FEBase * fe = _fes[_tid];
+    FEBase * fe = _fes[_tid][side->dim()];
 
     //Optionally check to see whether face is reasonable candidate based on an
     //estimate of how closely it is likely to project to the face
@@ -1713,7 +1717,7 @@ PenetrationThread::getSidesOnMasterBoundary(std::vector<unsigned int> &sides,
                                             const Elem *const elem)
 {
   sides.clear();
-  for(unsigned int m=0; m<_n_elems; ++m)
+  for (unsigned int m=0; m<_n_elems; ++m)
   {
     if (_elem_list[m] == elem->id())
     {

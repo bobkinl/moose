@@ -48,7 +48,7 @@ FullSolveMultiApp::init()
     _executioners.resize(_my_num_apps);
 
     // Grab Executioner from each app
-    for(unsigned int i=0; i<_my_num_apps; i++)
+    for (unsigned int i=0; i<_my_num_apps; i++)
     {
       MooseApp * app = _apps[i];
       Executioner * ex = app->getExecutioner();
@@ -64,8 +64,11 @@ FullSolveMultiApp::init()
 }
 
 void
-FullSolveMultiApp::solveStep(Real /*dt*/, Real /*target_time*/)
+FullSolveMultiApp::solveStep(Real /*dt*/, Real /*target_time*/, bool auto_advance)
 {
+  if (!auto_advance)
+    mooseError("FullSolveMultiApp is not compatible with auto_advance=false");
+
   if (!_has_an_app)
     return;
 
@@ -80,7 +83,7 @@ FullSolveMultiApp::solveStep(Real /*dt*/, Real /*target_time*/)
   int ierr;
   ierr = MPI_Comm_rank(_orig_comm, &rank); mooseCheckMPIErr(ierr);
 
-  for(unsigned int i=0; i<_my_num_apps; i++)
+  for (unsigned int i=0; i<_my_num_apps; i++)
   {
     Executioner * ex = _executioners[i];
     ex->init();

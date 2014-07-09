@@ -198,10 +198,13 @@ private:
 
   /// For access to registerRestartableDataOnSubProblem()
   friend class PostprocessorData;
+  friend class VectorPostprocessorData;
   friend class NearestNodeLocator;
   friend class ReportableData;
-  friend class ExodusOutput;
-  friend class FileOutputter;
+  friend class FileOutput;
+  friend class FEProblem;
+  friend class Transient;
+  friend class TableOutput;
 };
 
 template<typename T>

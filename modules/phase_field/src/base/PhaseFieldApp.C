@@ -5,9 +5,11 @@
 #include "MatDiffusion.h"
 #include "ACInterface.h"
 #include "CHMath.h"
+#include "CHParsed.h"
 #include "CHInterface.h"
 #include "SplitCHWRes.h"
 #include "SplitCHMath.h"
+#include "SplitCHParsed.h"
 #include "CoupledImplicitEuler.h"
 #include "CrossIC.h"
 #include "SmoothCircleIC.h"
@@ -50,7 +52,7 @@ InputParameters validParams<PhaseFieldApp>()
 PhaseFieldApp::PhaseFieldApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   PhaseFieldApp::registerObjects(_factory);
@@ -75,9 +77,11 @@ PhaseFieldApp::registerObjects(Factory & factory)
   registerKernel(MatDiffusion);
   registerKernel(ACInterface);
   registerKernel(CHMath);
+  registerKernel(CHParsed);
   registerKernel(CHInterface);
   registerKernel(SplitCHWRes);
   registerKernel(SplitCHMath);
+  registerKernel(SplitCHParsed);
   registerKernel(CoupledImplicitEuler);
   registerKernel(ACGrGrPoly);
   registerKernel(ACGBPoly);
@@ -98,9 +102,9 @@ PhaseFieldApp::registerObjects(Factory & factory)
   registerUserObject(NodalFloodCount);
   registerAux(NodalFloodCountAux);
   registerAux(BndsCalcAux);
-//  registerAux(SPPARKSAux);
+  // registerAux(SPPARKSAux);
   registerUserObject(NodalVolumeFraction);
-//  registerUserObject(SPPARKSUserObject);
+  // registerUserObject(SPPARKSUserObject);
 }
 
 void

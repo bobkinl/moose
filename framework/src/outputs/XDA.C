@@ -22,13 +22,14 @@ InputParameters validParams<XDA>()
 {
   // Get the base class parameters
 
-  InputParameters params = validParams<OversampleOutputter>();
+  InputParameters params = validParams<OversampleOutput>();
 
   // Supress un-available parameters
   params.suppressParameter<bool>("output_nodal_variables");
   params.suppressParameter<bool>("output_elemental_variables");
   params.suppressParameter<bool>("output_scalar_variables");
   params.suppressParameter<bool>("output_postprocessors");
+  params.suppressParameter<bool>("output_vector_postprocessors");
   params.suppressParameter<bool>("scalar_as_nodal");
   params.suppressParameter<bool>("sequence");
 
@@ -44,7 +45,7 @@ InputParameters validParams<XDA>()
 }
 
 XDA::XDA(const std::string & name, InputParameters parameters) :
-    OversampleOutputter(name, parameters),
+    OversampleOutput(name, parameters),
     _binary(getParam<bool>("_binary"))
 {
   // Force sequence output
@@ -66,30 +67,37 @@ XDA::output()
     _mesh_ptr->getMesh().write(filename()+"_mesh.xda");
     _es_ptr->write (filename()+".xda", WRITE, EquationSystems::WRITE_DATA | EquationSystems::WRITE_ADDITIONAL_DATA);
   }
+  _file_num++;
 }
 
 void
 XDA::outputNodalVariables()
 {
-  mooseError("Individual output of nodal variables is not support for XDA/XDR output");
+  mooseError("Individual output of nodal variables is not supported for XDA/XDR output");
 }
 
 void
 XDA::outputElementalVariables()
 {
-  mooseError("Individual output of elemental variables is not support for XDA/XDR output");
+  mooseError("Individual output of elemental variables is not supported for XDA/XDR output");
 }
 
 void
 XDA::outputPostprocessors()
 {
-  mooseError("Individual output of postprocessors is not support for XDA/XDR output");
+  mooseError("Individual output of postprocessors is not supported for XDA/XDR output");
+}
+
+void
+XDA::outputVectorPostprocessors()
+{
+  mooseError("Individual output of VectorPostprocessors is not supported for XDA/XDR output");
 }
 
 void
 XDA::outputScalarVariables()
 {
-  mooseError("Individual output of scalars is not support for XDA/XDR output");
+  mooseError("Individual output of scalars is not supported for XDA/XDR output");
 }
 
 std::string
@@ -103,6 +111,6 @@ XDA::filename()
          << std::setprecision(0)
          << std::setfill('0')
          << std::right
-         << _t_step;
+         << _file_num;
   return output.str();
 }

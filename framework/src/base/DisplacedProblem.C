@@ -15,96 +15,16 @@
 #include "DisplacedProblem.h"
 #include "Problem.h"
 #include "SubProblem.h"
-#include "ExodusOutput.h"
+#include "UpdateDisplacedMeshThread.h"
+#include "MooseApp.h"
 
 template<>
 InputParameters validParams<DisplacedProblem>()
 {
   InputParameters params = validParams<SubProblem>();
   params.addPrivateParam<std::vector<std::string> >("displacements");
-  params.addPrivateParam<bool>("sequence", true);
   return params;
 }
-
-class UpdateDisplacedMeshThread
-{
-public:
-  UpdateDisplacedMeshThread(DisplacedProblem & problem) :
-      _problem(problem),
-      _ref_mesh(_problem.refMesh()),
-      _nl_soln(*_problem._nl_solution),
-      _aux_soln(*_problem._aux_solution)
-  {
-  }
-
-  void operator() (const SemiLocalNodeRange & range) const
-  {
-    ParallelUniqueId puid;
-
-    std::vector<std::string> & displacement_variables = _problem._displacements;
-    unsigned int num_displacements = displacement_variables.size();
-
-    std::vector<unsigned int> var_nums;
-    std::vector<unsigned int> var_nums_directions;
-
-    std::vector<unsigned int> aux_var_nums;
-    std::vector<unsigned int> aux_var_nums_directions;
-
-    for(unsigned int i=0; i<num_displacements; i++)
-    {
-      std::string displacement_name = displacement_variables[i];
-
-      if (_problem._displaced_nl.sys().has_variable(displacement_name))
-      {
-         var_nums.push_back(_problem._displaced_nl.sys().variable_number(displacement_name));
-         var_nums_directions.push_back(i);
-      }
-      else if (_problem._displaced_aux.sys().has_variable(displacement_name))
-      {
-         aux_var_nums.push_back(_problem._displaced_aux.sys().variable_number(displacement_name));
-         aux_var_nums_directions.push_back(i);
-      }
-      else
-        mooseError("Undefined variable '"<<displacement_name<<"' used for displacements!");
-    }
-
-    unsigned int num_var_nums = var_nums.size();
-    unsigned int num_aux_var_nums = aux_var_nums.size();
-
-    unsigned int nonlinear_system_number = _problem._displaced_nl.sys().number();
-    unsigned int aux_system_number = _problem._displaced_aux.sys().number();
-
-    SemiLocalNodeRange::const_iterator nd = range.begin();
-
-    for (nd = range.begin() ; nd != range.end(); ++nd)
-    {
-      Node & displaced_node = *(*nd);
-
-      Node & reference_node = _ref_mesh.node(displaced_node.id());
-
-      for(unsigned int i=0; i<num_var_nums; i++)
-      {
-        unsigned int direction = var_nums_directions[i];
-        if (reference_node.n_dofs(nonlinear_system_number, var_nums[i]) > 0)
-          displaced_node(direction) = reference_node(direction) + _nl_soln(reference_node.dof_number(nonlinear_system_number, var_nums[i], 0));
-      }
-
-      for(unsigned int i=0; i<num_aux_var_nums; i++)
-      {
-        unsigned int direction = aux_var_nums_directions[i];
-        if (reference_node.n_dofs(aux_system_number, aux_var_nums[i]) > 0)
-          displaced_node(direction) = reference_node(direction) + _aux_soln(reference_node.dof_number(aux_system_number, aux_var_nums[i], 0));
-      }
-    }
-  }
-
-protected:
-  DisplacedProblem & _problem;
-  MooseMesh & _ref_mesh;
-  const NumericVector<Number> & _nl_soln;
-  const NumericVector<Number> & _aux_soln;
-};
-
 
 DisplacedProblem::DisplacedProblem(FEProblem & mproblem, MooseMesh & displaced_mesh, InputParameters params) :
     SubProblem(mproblem.name() + "_disp", params),
@@ -115,12 +35,8 @@ DisplacedProblem::DisplacedProblem(FEProblem & mproblem, MooseMesh & displaced_m
     _displacements(params.get<std::vector<std::string> >("displacements")),
     _displaced_nl(*this, _mproblem.getNonlinearSystem(), _mproblem.getNonlinearSystem().name() + "_displaced", Moose::VAR_NONLINEAR),
     _displaced_aux(*this, _mproblem.getAuxiliarySystem(), _mproblem.getAuxiliarySystem().name() + "_displaced", Moose::VAR_AUXILIARY),
-    _geometric_search_data(_mproblem, _mesh),
-    _ex(new ExodusOutput(_app, _eq, true, *this, "DisplacedExodusOutput")),
-    _seq(params.get<bool>("sequence"))
+    _geometric_search_data(_mproblem, _mesh)
 {
-  _ex->sequence(_seq);
-
   unsigned int n_threads = libMesh::n_threads();
   _assembly.resize(n_threads);
   for (unsigned int i = 0; i < n_threads; ++i)
@@ -131,15 +47,13 @@ DisplacedProblem::~DisplacedProblem()
 {
   for (unsigned int i = 0; i < libMesh::n_threads(); ++i)
     delete _assembly[i];
-
-  delete _ex;
 }
 
 void
-DisplacedProblem::createQRules(QuadratureType type, Order order)
+DisplacedProblem::createQRules(QuadratureType type, Order order, Order volume_order, Order face_order)
 {
   for (unsigned int tid = 0; tid < libMesh::n_threads(); ++tid)
-    _assembly[tid]->createQRules(type, order);
+    _assembly[tid]->createQRules(type, order, volume_order, face_order);
 }
 
 void
@@ -171,16 +85,11 @@ DisplacedProblem::init()
   _mesh.meshChanged();
   _app.getOutputWarehouse().meshChanged();
   Moose::setup_perf_log.pop("DisplacedProblem::init::meshChanged()","Setup");
-
-  _ex->setOutputVariables(_mproblem.getVariableNames());
 }
 
 void
 DisplacedProblem::initAdaptivity()
 {
-  // with adaptivity, each time step must go into a separate file
-  _seq = true;
-  _ex->sequence(_seq);
 }
 
 void
@@ -205,11 +114,14 @@ DisplacedProblem::updateMesh(const NumericVector<Number> & soln, const NumericVe
   _nl_solution = &soln;
   _aux_solution = &aux_soln;
 
-  Threads::parallel_for(*_mesh.getActiveSemiLocalNodeRange(), UpdateDisplacedMeshThread(*this));
+  Threads::parallel_for (*_mesh.getActiveSemiLocalNodeRange(), UpdateDisplacedMeshThread(*this));
 
   // Update the geometric searches that depend on the displaced mesh
-//  if (_displaced_nl.currentlyComputingJacobian())
-    _geometric_search_data.update();
+  // if (_displaced_nl.currentlyComputingJacobian())
+  _geometric_search_data.update();
+
+  // Since the Mesh changed, update the PointLocator object used by DiracKernels.
+  _dirac_kernel_info.updatePointLocator(_mesh);
 
   Moose::perf_log.pop("updateDisplacedMesh()","Solve");
 }
@@ -324,15 +236,12 @@ DisplacedProblem::prepareAssemblyNeighbor(THREAD_ID tid)
 bool
 DisplacedProblem::reinitDirac(const Elem * elem, THREAD_ID tid)
 {
-  std::set<Point> & points_set = _dirac_kernel_info._points[elem];
+  std::vector<Point> & points = _dirac_kernel_info.getPoints()[elem];
 
-  bool have_points = points_set.size();
+  bool have_points = points.size();
 
   if (have_points)
   {
-    std::vector<Point> points(points_set.size());
-    std::copy(points_set.begin(), points_set.end(), points.begin());
-
     _assembly[tid]->reinitAtPhysical(elem, points);
 
     _displaced_nl.prepare(tid);
@@ -420,10 +329,10 @@ DisplacedProblem::reinitNeighbor(const Elem * elem, unsigned int side, THREAD_ID
 }
 
 void
-DisplacedProblem::reinitNeighborPhys(const Elem * neighbor, unsigned int /*neighbor_side*/, const std::vector<Point> & physical_points, THREAD_ID tid)
+DisplacedProblem::reinitNeighborPhys(const Elem * neighbor, unsigned int neighbor_side, const std::vector<Point> & physical_points, THREAD_ID tid)
 {
   // Reinit shape functions
-  _assembly[tid]->reinitNeighborAtPhysical(neighbor, physical_points);
+  _assembly[tid]->reinitNeighborAtPhysical(neighbor, neighbor_side, physical_points);
 
   // Set the neighbor dof indices
   _displaced_nl.prepareNeighbor(tid);
@@ -455,7 +364,7 @@ DisplacedProblem::reinitScalars(THREAD_ID tid)
 void
 DisplacedProblem::getDiracElements(std::set<const Elem *> & elems)
 {
-  elems = _dirac_kernel_info._elements;
+  elems = _dirac_kernel_info.getElements();
 }
 
 void
@@ -583,36 +492,20 @@ DisplacedProblem::updateGeomSearch(GeometricSearchData::GeometricSearchType type
 }
 
 void
-DisplacedProblem::output(bool /*force*/)
-{
-  _ex->output(_mproblem.out().fileBase() + "_displaced", _mproblem.time(), _mproblem.timeStep());
-  if (_seq)
-    _ex->meshChanged();
-}
-
-void
 DisplacedProblem::meshChanged()
 {
   // mesh changed
   _eq.reinit();
   _mesh.meshChanged();
+
+  // Since the Mesh changed, update the PointLocator object used by DiracKernels.
+  _dirac_kernel_info.updatePointLocator(_mesh);
+
   unsigned int n_threads = libMesh::n_threads();
 
   for (unsigned int i = 0; i < n_threads; ++i)
     _assembly[i]->invalidateCache();
   _geometric_search_data.update();
-}
-
-void
-DisplacedProblem::outputPps(const FormattedTable & table)
-{
-  _ex->outputPps(_mproblem.out().fileBase() + "_displaced", table, _mproblem.time());
-}
-
-void
-DisplacedProblem::setOutputVariables(std::vector<VariableName> output_variables)
-{
-  _ex->setOutputVariables(output_variables);
 }
 
 void
@@ -664,12 +557,6 @@ DisplacedProblem::onTimestepBegin()
 void
 DisplacedProblem::onTimestepEnd()
 {
-}
-
-Order
-DisplacedProblem::getQuadratureOrder()
-{
-  return _mproblem.getQuadratureOrder();
 }
 
 void

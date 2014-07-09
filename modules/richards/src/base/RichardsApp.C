@@ -8,10 +8,11 @@
 #include "AppFactory.h"
 
 // UserObjects
-#include "RichardsPorepressureNames.h"
+#include "RichardsVarNames.h"
 #include "RichardsDensityConstBulk.h"
 #include "RichardsDensityIdeal.h"
 #include "RichardsDensityMethane20degC.h"
+#include "RichardsDensityVDW.h"
 #include "RichardsRelPermMonomial.h"
 #include "RichardsRelPermPower.h"
 #include "RichardsRelPermVG.h"
@@ -24,6 +25,8 @@
 #include "RichardsSeff1RSC.h"
 #include "RichardsSeff2waterVG.h"
 #include "RichardsSeff2gasVG.h"
+#include "RichardsSeff2waterVGshifted.h"
+#include "RichardsSeff2gasVGshifted.h"
 #include "RichardsSeff2waterRSC.h"
 #include "RichardsSeff2gasRSC.h"
 #include "RichardsSat.h"
@@ -32,6 +35,8 @@
 #include "RichardsSumQuantity.h"
 
 // AuxKernels
+#include "RichardsSatAux.h"
+#include "RichardsSatPrimeAux.h"
 #include "RichardsSeffAux.h"
 #include "RichardsSeffPrimeAux.h"
 #include "RichardsSeffPrimePrimeAux.h"
@@ -55,12 +60,6 @@
 #include "GradParsedFunction.h"
 #include "Grad2ParsedFunction.h"
 
-// Indicators
-#include "RichardsFluxJumpIndicator.h"
-
-// Markers
-#include "OrientedBoxMarkerDepr.h"
-
 // Postprocessors
 #include "RichardsMass.h"
 #include "RichardsPiecewiseLinearSinkFlux.h"
@@ -69,12 +68,11 @@
 #include "RichardsExcavFlow.h"
 #include "RichardsPlotQuantity.h"
 
-// TimeSteppers
-#include "FunctionControlledDT.h"
-
 // Kernels
 #include "RichardsMassChange.h"
+#include "RichardsLumpedMassChange.h"
 #include "RichardsFlux.h"
+#include "RichardsFullyUpwindFlux.h"
 #include "RichardsPPenalty.h"
 
   // BoundaryConditions
@@ -82,6 +80,8 @@
 #include "RichardsPiecewiseLinearSink.h"
 #include "RichardsHalfGaussianSink.h"
 
+// Problems
+#include "RichardsMultiphaseProblem.h"
 
 template<>
 InputParameters validParams<RichardsApp>()
@@ -93,7 +93,7 @@ InputParameters validParams<RichardsApp>()
 RichardsApp::RichardsApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   RichardsApp::registerObjects(_factory);
@@ -116,10 +116,11 @@ void
 RichardsApp::registerObjects(Factory & factory)
 {
   // UserObjects
-  registerUserObject(RichardsPorepressureNames);
+  registerUserObject(RichardsVarNames);
   registerUserObject(RichardsDensityConstBulk);
   registerUserObject(RichardsDensityIdeal);
   registerUserObject(RichardsDensityMethane20degC);
+  registerUserObject(RichardsDensityVDW);
   registerUserObject(RichardsRelPermMonomial);
   registerUserObject(RichardsRelPermPower);
   registerUserObject(RichardsRelPermVG);
@@ -132,6 +133,8 @@ RichardsApp::registerObjects(Factory & factory)
   registerUserObject(RichardsSeff1RSC);
   registerUserObject(RichardsSeff2waterVG);
   registerUserObject(RichardsSeff2gasVG);
+  registerUserObject(RichardsSeff2waterVGshifted);
+  registerUserObject(RichardsSeff2gasVGshifted);
   registerUserObject(RichardsSeff2waterRSC);
   registerUserObject(RichardsSeff2gasRSC);
   registerUserObject(RichardsSat);
@@ -140,6 +143,8 @@ RichardsApp::registerObjects(Factory & factory)
   registerUserObject(RichardsSumQuantity);
 
   // AuxKernels
+  registerAux(RichardsSatAux);
+  registerAux(RichardsSatPrimeAux);
   registerAux(RichardsSeffAux);
   registerAux(RichardsSeffPrimeAux);
   registerAux(RichardsSeffPrimePrimeAux);
@@ -163,12 +168,6 @@ RichardsApp::registerObjects(Factory & factory)
   registerFunction(GradParsedFunction);
   registerFunction(Grad2ParsedFunction);
 
-  // Indicators
-  registerIndicator(RichardsFluxJumpIndicator);
-
-  // Markers
-  registerMarker(OrientedBoxMarkerDepr);
-
   // Postprocessors
   registerPostprocessor(RichardsMass);
   registerPostprocessor(RichardsPiecewiseLinearSinkFlux);
@@ -177,21 +176,23 @@ RichardsApp::registerObjects(Factory & factory)
   registerPostprocessor(RichardsExcavFlow);
   registerPostprocessor(RichardsPlotQuantity);
 
-  // TimeSteppers
-  registerTimeStepper(FunctionControlledDT);
-
   // Kernels
   registerKernel(RichardsMassChange);
+  registerKernel(RichardsLumpedMassChange);
   registerKernel(RichardsFlux);
+  registerKernel(RichardsFullyUpwindFlux);
   registerKernel(RichardsPPenalty);
 
   // BoundaryConditions
   registerBoundaryCondition(RichardsExcav);
   registerBoundaryCondition(RichardsPiecewiseLinearSink);
   registerBoundaryCondition(RichardsHalfGaussianSink);
+
+  // Problems
+  registerProblem(RichardsMultiphaseProblem);
 }
 
 void
-RichardsApp::associateSyntax(Syntax & syntax, ActionFactory & action_factory)
+RichardsApp::associateSyntax(Syntax & /*syntax*/, ActionFactory & /*action_factory*/)
 {
 }

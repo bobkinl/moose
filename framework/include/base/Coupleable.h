@@ -177,6 +177,8 @@ protected:
   virtual VariableValue & coupledDotDu(const std::string & var_name, unsigned int comp = 0);
 
 protected:
+  // Reference to FEProblem
+  FEProblem & _c_fe_problem;
 
   /// Coupled vars whose values we provide
   std::map<std::string, std::vector<MooseVariable *> > _coupled_vars;
@@ -196,12 +198,14 @@ protected:
   /// Will hold the default value for optional coupled variables.
   std::map<std::string, VariableValue *> _default_value;
 
+  /// This will always be zero because the default values for optionally coupled variables is always constant and this is used for time derivative info
+  VariableValue _default_value_zero;
+
   /// This will always be zero because the default values for optionally coupled variables is always constant
   VariableGradient _default_gradient;
 
   /// This will always be zero because the default values for optionally coupled variables is always constant
   VariableSecond _default_second;
-
 
   /**
    * Extract pointer to a coupled variable
@@ -211,9 +215,14 @@ protected:
    */
   MooseVariable *getVar(const std::string & var_name, unsigned int comp);
 
+  /**
+   * Checks to make sure that the current Executioner has set "_it_transient" when old/older values
+   * are coupled in.
+   * @param name the name of the variable
+   */
+  void validateExecutionerType(const std::string & name) const;
 
 private:
-
   /// Maximum qps for any element in this system
   unsigned int _coupleable_max_qps;
 
@@ -221,31 +230,4 @@ private:
   std::map<std::string, unsigned int> _optional_var_index;
 };
 
-/**
- * Enhances Coupleable interface to also couple the values from neighbor elements
- *
- */
-class NeighborCoupleable : public Coupleable
-{
-public:
-  /**
-   * Constructing the object
-   * @param parameters Parameters that come from constructing the object
-   * @param nodal true if we need to couple with nodal values, otherwise false
-   */
-  NeighborCoupleable(InputParameters & parameters, bool nodal);
-
-  virtual ~NeighborCoupleable();
-
-  // neighbor
-  virtual VariableValue & coupledNeighborValue(const std::string & var_name, unsigned int comp = 0);
-  virtual VariableValue & coupledNeighborValueOld(const std::string & var_name, unsigned int comp = 0);
-  virtual VariableValue & coupledNeighborValueOlder(const std::string & var_name, unsigned int comp = 0);
-
-  virtual VariableGradient & coupledNeighborGradient(const std::string & var_name, unsigned int comp = 0);
-  virtual VariableGradient & coupledNeighborGradientOld(const std::string & var_name, unsigned int comp = 0);
-  virtual VariableGradient & coupledNeighborGradientOlder(const std::string & var_name, unsigned int comp = 0);
-
-  virtual VariableSecond & coupledNeighborSecond(const std::string & var_name, unsigned int i = 0);
-};
 #endif /* COUPLEABLE_H */

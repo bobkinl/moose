@@ -33,6 +33,8 @@
 #include "libmesh/sparse_matrix.h"
 #include "libmesh/petsc_matrix.h"
 #include "libmesh/coupling_matrix.h"
+#include "libmesh/libmesh_common.h"
+#include LIBMESH_INCLUDE_UNORDERED_MAP
 
 class FEProblem;
 class MoosePreconditioner;
@@ -92,7 +94,7 @@ public:
    * @param name The name of the kernel
    * @param parameters Kernel parameters
    */
-  void addKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
+  virtual void addKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
 
   /**
    * Adds a scalar kernel
@@ -234,11 +236,6 @@ public:
   Real computeDamping(const NumericVector<Number>& update);
 
   /**
-   * Print the L2-norm of variable residuals
-   */
-  void printVarNorms();
-
-  /**
    * Called at the beginning of the time step
    */
   void onTimestepBegin();
@@ -370,7 +367,14 @@ public:
   void printTopResiduals(const NumericVector<Number> & residual, unsigned int n);
 
   /**
+   * Return the last nonlinear norm
+   * @return A Real containing the last computed residual norm
+   */
+  Real nonlinearNorm() { return _last_nl_rnorm; }
+
+  /**
    * Force the printing of all variable norms after each solve.
+   * \todo{Remove after output update
    */
   void printAllVariableNorms(bool state) { _print_all_var_norms = state; }
 
@@ -387,9 +391,42 @@ public:
 
   Moose::PCSideType getPCSide() { return _pc_side; }
 
-  bool doingDG() { return _doing_dg; }
+  /**
+   * Indicated whether this system needs material properties on boundaries.
+   * @return Boolean if IntegratedBCs are active
+   */
+  bool needMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid) const;
 
-  bool hasActiveIntegratedBCs(BoundaryID bnd_id, THREAD_ID tid) { return ! _bcs[tid].activeIntegrated(bnd_id).empty(); }
+  /**
+   * Indicates whether this system needs material properties on internal sides.
+   * @return Boolean if DGKernels are active
+   */
+  bool needMaterialOnSide(SubdomainID subdomain_id, THREAD_ID tid) const;
+
+  /**
+   * Getter for _doing_dg
+   */
+  bool doingDG() const;
+
+  //@{
+  /**
+   * Updates the active kernels/dgkernels in the warehouse for the
+   * passed in subdomain_id and thread
+   */
+  void updateActiveKernels(SubdomainID subdomain_id, THREAD_ID tid);
+  void updateActiveDGKernels(Real t, Real dt, THREAD_ID tid);
+  //@}
+
+  //@{
+  /**
+   * Access functions to Warehouses from outside NonlinearSystem
+   */
+  const KernelWarehouse & getKernelWarehouse(THREAD_ID tid);
+  const DGKernelWarehouse & getDGKernelWarehouse(THREAD_ID tid);
+  const BCWarehouse & getBCWarehouse(THREAD_ID tid);
+  const DiracKernelWarehouse & getDiracKernelWarehouse(THREAD_ID tid);
+  const DamperWarehouse & getDamperWarehouse(THREAD_ID tid);
+  //@}
 
 public:
   FEProblem & _fe_problem;
@@ -531,15 +568,6 @@ protected:
 
   bool _print_all_var_norms;
 
-public:
-  friend class ComputeResidualThread;
-  friend class ComputeJacobianThread;
-  friend class ComputeFullJacobianThread;
-  friend class ComputeJacobianBlockThread;
-//  friend class ComputeMaterialsObjectThread;
-//  friend class ProjectMaterialProperties;
-  friend class ComputeDiracThread;
-  friend class ComputeDampingThread;
 };
 
 #endif /* NONLINEARSYSTEM_H */

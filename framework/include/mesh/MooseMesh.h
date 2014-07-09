@@ -156,7 +156,7 @@ public:
    * Calls BoundaryInfo::build_side_list().
    * Fills in the three passed vectors with list logical (element, side, id) tuples.
    */
-  void buildSideList(std::vector<unsigned int> & el, std::vector<unsigned short int> & sl, std::vector<short int> & il);
+  void buildSideList(std::vector<unsigned int> & el, std::vector<unsigned short int> & sl, std::vector<boundary_id_type> & il);
 
   /**
    * Calls BoundaryInfo::side_with_boundary_id().
@@ -213,6 +213,13 @@ public:
    * MooseMesh also know when it has changed.
    */
   void meshChanged();
+
+  /**
+  * Declares a callback function that is executed at the conclusion
+  * of meshChanged(). Ther user can implement actions required after
+  * changing the mesh here.
+  **/
+  virtual void onMeshChanged();
 
   /**
    * Cache information about what elements were refined and coarsened in the previous step.
@@ -279,6 +286,18 @@ public:
   const std::set<BoundaryID> & meshBoundaryIds() const;
 
   /**
+   * Sets the mapping between BoundaryID and normal vector
+   * Is called by AddAllSideSetsByNormals
+   */
+  void setBoundaryToNormalMap(AutoPtr<std::map<BoundaryID, RealVectorValue> > boundary_map);
+
+  /**
+   * Sets the set of BoundaryIDs
+   * Is called by AddAllSideSetsByNormals
+   */
+  void setMeshBoundaryIDs(std::set<BoundaryID> boundary_IDs);
+
+  /**
    * Returns the normal vector associated with a given BoundaryID.
    * It's only valid to call this when AddAllSideSetsByNormals is active.
    */
@@ -337,7 +356,8 @@ public:
   /**
    * Implicit conversion operator from MooseMesh -> libMesh::MeshBase.
    */
-  operator libMesh::MeshBase &();
+  operator libMesh::MeshBase & ();
+  operator const libMesh::MeshBase & () const;
 
   /**
    * Accessor for the underlying libMesh Mesh object.
@@ -364,7 +384,7 @@ public:
    * Return a writable reference to a vector of node IDs that belong
    * to nodeset_id.
    */
-  std::vector<unsigned int> & getNodeList(short int nodeset_id);
+  std::vector<unsigned int> & getNodeList(boundary_id_type nodeset_id);
 
   /**
    * Add a new node to the mesh.  If there is already a node located at the point passed
@@ -494,6 +514,15 @@ public:
   bool isTranslatedPeriodic(unsigned int nonlinear_var_num, unsigned int component) const;
 
   /**
+   * This function returns the minimum vector between two points on the mesh taking into account periodicity
+   * for the given variable number.
+   * @param nonlinear_var_num - The nonlinear variable number
+   * @param p, q - The points between which to compute a minimum vector
+   * @return RealVectorValue - The vector pointing from p to q
+   */
+  RealVectorValue minPeriodicVector(unsigned int nonlinear_var_num, Point p, Point q) const;
+
+  /**
    * This function returns the distance between two points on the mesh taking into account periodicity
    * for the given variable number.
    * @param nonlinear_var_num - The nonlinear variable number
@@ -558,6 +587,24 @@ public:
    * nodes, false otherwise.
    */
   bool isBoundaryNode(unsigned int node_id);
+
+  /**
+   * Returns true if the requested node is in the list of boundary
+   * nodes for the specified boundary, false otherwise.
+   */
+  bool isBoundaryNode(unsigned int node_id, BoundaryID bnd_id);
+
+  /**
+   * Returns true if the requested element is in the list of boundary
+   * elements, false otherwise.
+   */
+  bool isBoundaryElem(unsigned int elem_id);
+
+  /**
+   * Returns true if the requested element is in the list of boundary
+   * elements for the specified boundary, false otherwise.
+   */
+  bool isBoundaryElem(unsigned int elem_id, BoundaryID bnd_id);
 
   /**
    * Generate a unified error message if the underlying libMesh mesh
@@ -701,9 +748,6 @@ protected:
    * In serial, this is equivalent to the values returned
    * by _mesh.boundary_info->get_boundary_ids().  In parallel,
    * it will contain off-processor boundary IDs as well.
-   *
-   * Note: This datastructure is directly accessed
-   * and modified by the friend "AddAllSideSetsByNormals".
    */
   std::set<BoundaryID> _mesh_boundary_ids;
 
@@ -714,13 +758,15 @@ protected:
   std::vector<BndNode *> _bnd_nodes;
   typedef std::vector<BndNode *>::iterator             bnd_node_iterator_imp;
   typedef std::vector<BndNode *>::const_iterator const_bnd_node_iterator_imp;
-  /// Set of node IDs that are boundary nodes
-  std::set<unsigned int> _bnd_node_ids;
+  /// Map of sets of node IDs in each boundary
+  std::map<boundary_id_type, std::set<unsigned int> > _bnd_node_ids;
 
   /// array of boundary elems
   std::vector<BndElement *> _bnd_elems;
   typedef std::vector<BndElement *>::iterator             bnd_elem_iterator_imp;
   typedef std::vector<BndElement *>::const_iterator const_bnd_elem_iterator_imp;
+  /// Map of set of elem IDs connected to each boundary
+  std::map<boundary_id_type, std::set<unsigned int> > _bnd_elem_ids;
 
   std::map<unsigned int, Node *> _quadrature_nodes;
   std::map<unsigned int, std::map<unsigned int, std::map<unsigned int, Node *> > > _elem_to_side_to_qp_to_quadrature_nodes;
@@ -730,7 +776,7 @@ protected:
   std::map<unsigned int, std::set<SubdomainID> > _block_node_list;
 
   /// list of nodes that belongs to a specified nodeset: indexing [nodeset_id] -> [array of node ids]
-  std::map<short int, std::vector<unsigned int> > _node_set_nodes;
+  std::map<boundary_id_type, std::vector<unsigned int> > _node_set_nodes;
 
   std::set<unsigned int> _ghosted_boundaries;
   std::vector<Real> _ghosted_boundaries_inflation;
@@ -862,8 +908,6 @@ private:
 
   /// Whether or not this Mesh is allowed to read a recovery file
   bool _allow_recovery;
-
-  friend class AddAllSideSetsByNormals;
 };
 
 #endif /* MOOSEMESH_H */

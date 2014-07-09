@@ -18,14 +18,24 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <sstream>
 
 // libMesh
 #include "libmesh/parameters.h"
+#include "libmesh/parsed_function.h"
 
 #include "MooseError.h"
 #include "MooseTypes.h"
 #include "MooseEnum.h"
 #include "MooseUtils.h"
+
+#ifdef LIBMESH_HAVE_FPARSER
+#include "libmesh/fparser.hh"
+#else
+template <typename T>
+class FunctionParserBase
+{};
+#endif
 
 class MooseObject;
 class GlobalParamsAction;
@@ -48,7 +58,7 @@ public:
   InputParameters(const InputParameters &rhs);
   InputParameters(const Parameters &rhs);
 
-  virtual ~InputParameters(){}
+  virtual ~InputParameters() {}
 
   virtual void clear();
 
@@ -75,6 +85,13 @@ public:
   template <typename T> T & set (const std::string&);
 
   /**
+   * Runs a range on the supplied parameter if it exists and throws an error if that check fails.
+   * @returns Boolean indicating whether range check exists
+   */
+  template <typename T, typename UP_T> void rangeCheck(const std::string & full_name, const std::string & short_name,
+                                                       InputParameters::Parameter<T> * param, std::ostream & oss=Moose::out);
+
+  /**
    * Verifies that the requested parameter exists and is not NULL and returns it to the caller.
    * The template parameter must be a pointer or an error will be thrown.
    */
@@ -99,23 +116,23 @@ public:
    * These methods add an option parameter and a documentation string to the InputParameters object.
    * The first version of this function takes a default value which is used if the parameter
    * is not found in the input file.  The second method will leave the parameter uninitialized
-   * but can be checked with "isValid" before use
+   * but can be checked with "isParamValid" before use
    */
-  template <typename T>
-  void addParam(const std::string &name, const T & value, const std::string &doc_string);
+  template <typename T, typename S>
+  void addParam(const std::string &name, const S & value, const std::string &doc_string);
   template <typename T>
   void addParam(const std::string &name, const std::string &doc_string);
 
   /**
-   * Method for adding a input parameter that expects a postprocessor name, but provides a default value
-   * in the case where the postprocessor name provided is not valid or not provided.
-   * @param name The name of the input file parameter that is expecting a PostprocessorName
-   * @param default_value The default value to use in the case that the postprocessor does not exist
-   * @param doc_string Documentation string for this parameter
-   *
-   * This parameter works with the PostprocessorInterface to return the default value when getPostprocessorValue is called
+   * These methods add an range checked parameters. A lower and upper bound can be supplied and the
+   * supplied parameter will be checked to fall within that range.
    */
-  void addPostprocessor(const std::string & name, Real default_value, const std::string & doc_string);
+  template <typename T>
+  void addRequiredRangeCheckedParam(const std::string &name, const std::string &parsed_function, const std::string &doc_string);
+  template <typename T>
+  void addRangeCheckedParam(const std::string &name, const T & value, const std::string &parsed_function, const std::string &doc_string);
+  template <typename T>
+  void addRangeCheckedParam(const std::string &name, const std::string &parsed_function, const std::string &doc_string);
 
   /**
    * These methods add an option parameter and with a customer type to the InputParameters object.  The custom
@@ -292,7 +309,7 @@ public:
   std::string type(const std::string &name);
 
   /**
-   * Returns a boolean indicating whether the specified parameter is private or not
+   * Returns a Boolean indicating whether the specified parameter is private or not
    */
   bool isPrivate(const std::string &name) const;
 
@@ -341,7 +358,7 @@ public:
    *   Required parameters are verified as valid meaning that they were either initialized when
    *   they were created, or were read from an input file or some other valid source
    */
-  void checkParams(const std::string & prefix) const;
+  void checkParams(const std::string & prefix);
 
   /**
    * Methods returning iterators to the coupled variables names stored in this
@@ -357,18 +374,32 @@ public:
   }
 
   /**
+   * Return whether or not the requested parameter has a default coupled value.
+   *
+   * @param coupling_name The name of the coupling parameter to get the default value for.
+   */
+  bool hasDefaultCoupledValue(const std::string & coupling_name) const;
+
+  /**
    * Get the default value for an optionally coupled variable.
    *
    * @param coupling_name The name of the coupling parameter to get the default value for.
    */
-  Real defaultCoupledValue(std::string coupling_name);
+  Real defaultCoupledValue(const std::string & coupling_name) const;
+
+  /**
+   * Set the default value for an optionally coupled variable (called by the Parser).
+   *
+   * @param coupling_name The name of the coupling parameter to get the default value for.
+   */
+  void defaultCoupledValue(const std::string & coupling_name, Real value);
 
   /**
    * Get the default value for a postprocessor added with addPostprocessor
    * @param name The name of the postprocessor
    * @return The default value for the postprocessor
    */
-  PostprocessorValue & defaultPostprocessorValue(const std::string & name);
+  PostprocessorValue & defaultPostprocessorValue(const std::string & name, bool suppress_error=false);
 
   /**
    * Returns true if a default PostprocessorValue is defined
@@ -379,19 +410,17 @@ public:
 
   /*
    * Method for applying common parameters
-   * @param common The set of parameters to apply to the parameters store in this object
+   * @param common The set of parameters to apply to the parameters stored in this object
    *
-   * The parameters supplied as an argument are set if:
-   *  (1) The common parameter exists as a local parameter
-   *  (2) The local parameter is not valid
-   *  (3) The local parameter is not private
-   *  (4) The common parameter is valid
-   *  (5) The common parameter is not private
+   * In order to apply common parameter 4 statements must be satisfied
+   *   (1) A local parameter must exist with the same name as common parameter
+   *   (2) Common parameter must valid
+   *   (3) Local parameter must be invalid OR not have been set from its default
+   *   (4) Neither may be private
    *
-   * Output object have a set of common parameters that are passed
-   * down to each of the output object created. This method is used for
-   * apply those common parameters, but only if the parameter exists on the object
-   * and it has yet to be set to a valid value.
+   * Output objects have a set of common parameters that are passed
+   * down to each of the output objects created. This method is used for
+   * applying those common parameters.
    *
    * @see CommonOutputAction AddOutputAction
    */
@@ -408,6 +437,10 @@ private:
   // Private constructor so that InputParameters can only be created in certain places.
   InputParameters();
 
+  /// This method is called when adding a Parameter with a default value, can be specialized for non-matching types
+  template <typename T, typename S>
+  void setParamHelper(const std::string &name, T &l_value, const S &r_value);
+
   /// The documentation strings for each parameter
   std::map<std::string, std::string> _doc_string;
 
@@ -420,12 +453,15 @@ private:
   /// The names of the parameters organized into groups
   std::map<std::string, std::string> _group;
 
+  /// The map of functions used for range checked parameters
+  std::map<std::string, std::string> _range_functions;
+
   /// The parameter is used to restrict types that can be built.  Typically this
   /// is used for MooseObjectAction derived Actions.
   std::vector<std::string> _buildable_types;
 
   /// This parameter collapses one level of nesting in the syntax blocks.  It is used
-  /// in conjuction with MooseObjectAction derived Actions.
+  /// in conjunction with MooseObjectAction derived Actions.
   bool _collapse_nesting;
 
   /// This parameter hides derived MOOSE object types from appearing in syntax dumps
@@ -453,6 +489,9 @@ private:
   /// The default value for postprocessors
   std::map<std::string, PostprocessorValue> _default_postprocessor_value;
 
+  /// If a parameters value was set by addParam, and not set again, it will appear in this list (see applyParameters)
+  std::set<std::string> _set_by_add_param;
+
 };
 
 // Template and inline function implementations
@@ -468,6 +507,37 @@ InputParameters::set (const std::string& name)
   set_attributes(name, false);
 
   return libmesh_cast_ptr<Parameter<T>*>(_values[name])->set();
+}
+
+template <typename T, typename UP_T>
+void
+InputParameters::rangeCheck(const std::string & full_name, const std::string & short_name, InputParameters::Parameter<T> * param, std::ostream & oss)
+{
+  mooseAssert(param, "Parameter is NULL");
+
+  if (_range_functions.find(short_name) == _range_functions.end())
+    return;
+
+  // Parse the expression
+  FunctionParserBase<UP_T> fp;
+  if (fp.Parse(_range_functions[short_name], short_name) != -1) // -1 for success
+  {
+    oss << "Error parsing expression: " << _range_functions[short_name] << '\n';
+    return;
+  }
+
+  // We require a non-const value for the implicit upscaling of the parameter type
+  std::vector<UP_T> value(1, param->set());
+  UP_T result = fp.Eval(&value[0]);
+
+  if (fp.EvalError())
+  {
+    oss << "Error evaluating expression: " << _range_functions[short_name] << "\nPerhaps you used the wrong variable name?\n";
+    return;
+  }
+
+  if (!result)
+    oss << "Range check failed for parameter " << full_name << "\n\tExpression: " << _range_functions[short_name] << "\n\tValue: " << value[0] << '\n';
 }
 
 template <typename T>
@@ -500,14 +570,21 @@ InputParameters::addRequiredParam(const std::string & /*name*/, const T & /*valu
   mooseError("You cannot call addRequiredParam and supply a default value for this type, please use addParam instead");
 }
 
-template <typename T>
+template <typename T, typename S>
 void
-InputParameters::addParam(const std::string &name, const T &value, const std::string &doc_string)
+InputParameters::addParam(const std::string &name, const S &value, const std::string &doc_string)
 {
   checkConsistentType<T>(name);
 
-  InputParameters::set<T>(name) = value;                    // valid parameter is set by set_attributes
+  T & l_value = InputParameters::set<T>(name);
   _doc_string[name] = doc_string;
+
+  // Set the parameter now
+  setParamHelper(name, l_value, value);
+
+  /* Indicate the default value, as set via addParam, is being used. The parameter is removed from the list whenever
+     it changes, see set_attributes */
+  _set_by_add_param.insert(name);
 }
 
 template <typename T>
@@ -518,6 +595,37 @@ InputParameters::addParam(const std::string &name, const std::string &doc_string
 
   InputParameters::insert<T>(name);
   _doc_string[name] = doc_string;
+}
+
+template <typename T, typename S>
+void
+InputParameters::setParamHelper(const std::string & /*name*/, T &l_value, const S &r_value)
+{
+  l_value = r_value;
+}
+
+template <typename T>
+void
+InputParameters::addRequiredRangeCheckedParam(const std::string &name, const std::string &parsed_function, const std::string &doc_string)
+{
+  addRequiredParam<T>(name, doc_string);
+  _range_functions[name] = parsed_function;
+}
+
+template <typename T>
+void
+InputParameters::addRangeCheckedParam(const std::string &name, const T & value, const std::string &parsed_function, const std::string &doc_string)
+{
+  addParam<T>(name, value, doc_string);
+  _range_functions[name] = parsed_function;
+}
+
+template <typename T>
+void
+InputParameters::addRangeCheckedParam(const std::string &name, const std::string &parsed_function, const std::string &doc_string)
+{
+  addParam<T>(name, doc_string);
+  _range_functions[name] = parsed_function;
 }
 
 template <typename T>
@@ -561,7 +669,9 @@ InputParameters::addPrivateParam(const std::string &name, const T &value)
   checkConsistentType<T>(name);
 
   InputParameters::set<T>(name) = value;
-  _private_params.insert(name);}
+  _private_params.insert(name);
+  _set_by_add_param.insert(name);
+}
 
 template <typename T>
 void
@@ -676,6 +786,57 @@ void
 InputParameters::addParam<std::vector<MooseEnum> >(const std::string & /*name*/, const std::string & /*doc_string*/)
 {
   mooseError("You must supply a vector of MooseEnum object(s) when using addParam, even if the parameter is not required!");
+}
+
+// Specialization for setParamHelper
+template<>
+inline
+void
+InputParameters::setParamHelper<PostprocessorName, Real>(const std::string &name, PostprocessorName & l_value, const Real &r_value)
+{
+  // Store the default value
+  _default_postprocessor_value[name] = r_value;
+
+  // Assign the default value so that it appears in the dump
+  std::ostringstream oss;
+  oss << r_value;
+  l_value = oss.str();
+}
+
+template<>
+inline
+void
+InputParameters::setParamHelper<PostprocessorName, int>(const std::string &name, PostprocessorName & l_value, const int &r_value)
+{
+  // Store the default value
+  _default_postprocessor_value[name] = r_value;
+
+  // Assign the default value so that it appears in the dump
+  std::ostringstream oss;
+  oss << r_value;
+  l_value = oss.str();
+}
+
+template<>
+inline
+void
+InputParameters::setParamHelper<FunctionName, Real>(const std::string & /*name*/, FunctionName & l_value, const Real &r_value)
+{
+  // Assign the default value so that it appears in the dump
+  std::ostringstream oss;
+  oss << r_value;
+  l_value = oss.str();
+}
+
+template<>
+inline
+void
+InputParameters::setParamHelper<FunctionName, int>(const std::string & /*name*/, FunctionName & l_value, const int &r_value)
+{
+  // Assign the default value so that it appears in the dump
+  std::ostringstream oss;
+  oss << r_value;
+  l_value = oss.str();
 }
 
 InputParameters emptyInputParameters();

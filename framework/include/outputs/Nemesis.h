@@ -16,7 +16,7 @@
 #define NEMESIS_H
 
 // MOOSE includes
-#include "OversampleOutputter.h"
+#include "OversampleOutput.h"
 
 // libMesh includes
 #include "libmesh/nemesis_io.h"
@@ -32,7 +32,7 @@ InputParameters validParams<Nemesis>();
  * Class for output data to the Nemesis format
  */
 class Nemesis :
-  public OversampleOutputter
+  public OversampleOutput
 {
 public:
 
@@ -47,7 +47,7 @@ public:
   virtual ~Nemesis();
 
   /**
-   * Overload the OutputBase::output method, this is required for Nemesis
+   * Overload the Output::output method, this is required for Nemesis
    * output due to the method utilized for outputing single/global parameters
    */
   virtual void output();
@@ -73,6 +73,11 @@ protected:
    * Writes postprocessor values to global output parameters
    */
   virtual void outputPostprocessors();
+
+  /**
+   * Not implemented.
+   */
+  virtual void outputVectorPostprocessors() { mooseError("Can't currently output VectorPostprocessors to Nemesis"); };
 
   /**
    * Writes scalar AuxVariables to global output parameters

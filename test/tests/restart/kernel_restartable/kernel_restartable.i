@@ -55,7 +55,7 @@
     perf_log = true
     linear_residuals = true
   [../]
-  [./checkpoint]
+  [./restart]
     type = Checkpoint
     num_files = 100
   [../]

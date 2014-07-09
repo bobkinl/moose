@@ -117,7 +117,7 @@ public:
    * Get the list of all user_objects
    * @return The list of all user_objects
    */
-  const std::vector<UserObject *> & all() { return _all_user_objects; }
+  const std::vector<UserObject *> & all() const { return _all_user_objects; }
 
   /**
    * Add a user_object
@@ -129,27 +129,30 @@ public:
    * Get the list of blocks with user_objects
    * @return The list of block IDs with user_objects
    */
-  const std::set<SubdomainID> & blockIds() { return _block_ids_with_user_objects; }
+  const std::set<SubdomainID> & blockIds() const { return _block_ids_with_user_objects; }
 
   /**
    * Get the list of boundary IDs with user_objects
    * @return The list of boundary IDs with user_objects
    */
-  const std::set<BoundaryID> & boundaryIds() { return _boundary_ids_with_user_objects; }
+  const std::set<BoundaryID> & boundaryIds() const { return _boundary_ids_with_user_objects; }
 
   /**
    * Get the list of nodeset IDs with user_objects
    * @return The list of nodeset IDs with user_objects
    */
-  const std::set<BoundaryID> & nodesetIds() { return _nodeset_ids_with_user_objects; }
+  const std::set<BoundaryID> & nodesetIds() const { return _nodeset_ids_with_user_objects; }
 
   /**
    * Get the list of subdomain IDs with *nodal* user_objects
    * @return The list of subdomain IDs with user_objects
    */
-  const std::set<SubdomainID> & blockNodalIds() { return _block_ids_with_nodal_user_objects; }
+  const std::set<SubdomainID> & blockNodalIds() const { return _block_ids_with_nodal_user_objects; }
 
 protected:
+  /// Internal method for sorting postprocessors based on dependencies
+  template <typename T>
+  void sortUserObjects(std::vector<T *> & pps_vector);
 
   /// Userobject Names
   std::map<std::string, UserObject *> _name_to_user_objects;
@@ -201,4 +204,4 @@ protected:
 
 };
 
-#endif // USER_OBJECTWAREHOUSE_Hb
+#endif // USER_OBJECTWAREHOUSE_H

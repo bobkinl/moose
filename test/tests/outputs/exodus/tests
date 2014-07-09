@@ -10,8 +10,9 @@
     # Test the ability to write the input file to the output; this currently just checks if
     # Moose runs with the output_input = true
     # \TODO Find a method for comparing files with and without information records
-    type = 'RunApp'
+    type = 'CheckFiles'
     input = 'exodus_input.i'
+    check_files = 'exodus_input_out.e'
   [../]
 
   [./disable_initial]
@@ -19,7 +20,7 @@
     type = 'Exodiff'
     input = 'exodus.i'
     exodiff = 'exodus_disable_initial_out.e'
-    cli_args = 'Outputs/exodus/output_initial=false Outputs/exodus/file_base=exodus_disable_initial_out'
+    cli_args = 'Outputs/out/output_initial=false Outputs/out/file_base=exodus_disable_initial_out'
   [../]
 
   [./output_all]
@@ -40,7 +41,7 @@
     # Tests that the error message for hide/show variables input is working
     type = 'RunException'
     input = 'invalid_hide_variables.i'
-    expect_err = 'Output\(s\) do not exist \(must be variable, scalar, or postprocessor\): aux27'
+    expect_err = 'Output\(s\) do not exist \(must be variable, scalar, postprocessor, or vector postprocessor\):'
   [../]
 
   [./nodal_output]
@@ -48,19 +49,5 @@
     type = 'Exodiff'
     input = 'exodus_nodal.i'
     exodiff = 'exodus_nodal_out.e'
-  [../]
-
-  [./oversample]
-    # Tests that oversampling is functioning with a shift of position
-    type = 'Exodiff'
-    input = 'exodus_oversample.i'
-    exodiff = 'exodus_oversampled.e'
-  [../]
-
-  [./oversample_filemesh]
-    # Tests that oversampling a file input and change in output base is functioning
-    type = 'Exodiff'
-    input = 'exodus_oversample_file.i'
-    exodiff = 'exodus_oversample_custom_name.e'
   [../]
 []

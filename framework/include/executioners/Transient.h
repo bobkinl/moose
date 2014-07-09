@@ -63,7 +63,7 @@ public:
   virtual void execute();
 
   /**
-   * This should execute the solve for one timestep.
+   * Do whatever is necessary to advance one step.
    */
   virtual void takeStep(Real input_dt = -1.0);
 
@@ -99,19 +99,13 @@ public:
    */
   virtual void incrementStepOrReject();
 
-  virtual void endStep();
+  virtual void endStep(Real input_time = -1.0);
 
   /**
    * Can be used to set the next "target time" which is a time to nail perfectly.
    * Useful for driving MultiApps.
    */
   virtual void setTargetTime(Real target_time);
-
-  /**
-   * Tell this executioner whether or not it should be doing its own output.
-   * @param allow If false then this Executioner should _not_ do its own output
-   */
-  virtual void allowOutput(bool allow) { _allow_output = allow; }
 
   /**
    * Get the current time.
@@ -127,11 +121,6 @@ public:
    * Set the old time.
    */
   virtual void setTimeOld(Real t){ _time_old = t; };
-
-  /**
-   * Forces the problem to output right now.
-   */
-  virtual void forceOutput();
 
   /**
    * Get the Relative L2 norm of the change in the solution.
@@ -210,12 +199,14 @@ public:
    */
   Real unconstrainedDT() { return _unconstrained_dt; }
 
-  /**
-   * Set (or reset) the output position of the application.
-   */
-  virtual void setOutputPosition(const Point & p) { _problem.setOutputPosition(p); }
+  void parentOutputPositionChanged() { _problem.parentOutputPositionChanged(); }
+
 
 protected:
+  /**
+   * This should execute the solve for one timestep.
+   */
+  virtual void solveStep(Real input_dt = -1.0);
 
   FEProblem & _problem;
 
@@ -259,17 +250,27 @@ protected:
   std::set<Real> & _sync_times;
 
   bool _abort;
+
   ///if to use time interval output
   bool & _time_interval;
-  ///the output interval to use
-  Real _time_interval_output_interval;
   Real _next_interval_output_time;
+  Real _time_interval_output_interval;
+
   Real _start_time;
   Real _timestep_tolerance;
   Real & _target_time;
   bool _use_multiapp_dt;
 
-  bool _allow_output;
+  /**
+   * Picard Related
+   */
+  /// Number of Picard iterations to perform
+  int  _picard_it;
+  Real _picard_max_its;
+  bool _picard_converged;
+  Real _picard_initial_norm;
+  Real _picard_rel_tol;
+  Real _picard_abs_tol;
 
   ///should detailed diagnostic output be printed
   bool _verbose;

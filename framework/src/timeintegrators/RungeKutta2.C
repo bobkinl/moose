@@ -44,11 +44,11 @@ RungeKutta2::preSolve()
 void
 RungeKutta2::computeTimeDerivatives()
 {
-  _u_dot  = *_nl.currentSolution();
+  _u_dot  = *_solution;
   if (_stage == 1)
-    _u_dot -= _nl.solutionOld();
+    _u_dot -= _solution_old;
   else
-    _u_dot -= _nl.solutionOlder();
+    _u_dot -= _solution_older;
   _u_dot *= 1. / _dt;
 
   _du_dot_du = 1. / _dt;
@@ -68,7 +68,7 @@ RungeKutta2::solve()
   _fe_problem.time() = time_half;
   _fe_problem.getNonlinearSystem().sys().solve();
 
-  _fe_problem.copyOldSolutions();
+  _fe_problem.advanceState();
 
   // ---------------------------------
   Moose::out << " 2. stage" << std::endl;
@@ -82,6 +82,9 @@ RungeKutta2::solve()
   Moose::setSolverDefaults(_fe_problem);
 
   _fe_problem.getNonlinearSystem().sys().solve();
+
+  // Reset time_old back to what it was
+  _fe_problem.timeOld() = time_old;
 }
 
 void

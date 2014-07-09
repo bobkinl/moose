@@ -1,8 +1,6 @@
 #include "TrussMaterial.h"
 
 #include "Material.h"
-
-// Elk Includes
 #include "ColumnMajorMatrix.h"
 #include "SymmIsotropicElasticityTensor.h"
 #include "VolumetricModel.h"
@@ -104,17 +102,17 @@ TrussMaterial::computeProperties()
   NonlinearSystem & nonlinear_sys = _fe_problem.getNonlinearSystem();
   const NumericVector<Number>& ghosted_solution = *nonlinear_sys.currentSolution();
 
-  VectorValue<unsigned int> disp_dofs0(node0->dof_number(nonlinear_sys.number(), _disp_x_var->index(), 0),
-                                       (_disp_y_var ? node0->dof_number(nonlinear_sys.number(), _disp_y_var->index(), 0) : 0),
-                                       (_disp_z_var ? node0->dof_number(nonlinear_sys.number(), _disp_z_var->index(), 0) : 0));
-  VectorValue<unsigned int> disp_dofs1(node1->dof_number(nonlinear_sys.number(), _disp_x_var->index(), 0),
-                                       (_disp_y_var ? node1->dof_number(nonlinear_sys.number(), _disp_y_var->index(), 0) : 0),
-                                       (_disp_z_var ? node1->dof_number(nonlinear_sys.number(), _disp_z_var->index(), 0) : 0));
+  VectorValue<unsigned int> disp_dofs0(node0->dof_number(nonlinear_sys.number(), _disp_x_var->number(), 0),
+                                       (_disp_y_var ? node0->dof_number(nonlinear_sys.number(), _disp_y_var->number(), 0) : 0),
+                                       (_disp_z_var ? node0->dof_number(nonlinear_sys.number(), _disp_z_var->number(), 0) : 0));
+  VectorValue<unsigned int> disp_dofs1(node1->dof_number(nonlinear_sys.number(), _disp_x_var->number(), 0),
+                                       (_disp_y_var ? node1->dof_number(nonlinear_sys.number(), _disp_y_var->number(), 0) : 0),
+                                       (_disp_z_var ? node1->dof_number(nonlinear_sys.number(), _disp_z_var->number(), 0) : 0));
 
   RealVectorValue disp_vec0;
   RealVectorValue disp_vec1;
 
-  for(unsigned int i=0; i<_dim; ++i)
+  for (unsigned int i=0; i<_dim; ++i)
   {
     disp_vec0(i) = ghosted_solution(disp_dofs0(i));
     disp_vec1(i) = ghosted_solution(disp_dofs1(i));
@@ -136,7 +134,7 @@ TrussMaterial::computeProperties()
 
   Real thermal_strain = 0.0;
 
-  for(_qp=0; _qp < _qrule->n_points(); ++_qp)
+  for (_qp=0; _qp < _qrule->n_points(); ++_qp)
   {
     Real youngs_modulus(_youngs_modulus_coupled ? _youngs_modulus_var[_qp] : _youngs_modulus);
     if (_has_temp)

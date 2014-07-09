@@ -47,7 +47,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./liaux]
     type = SpatialUserObjectAux
     variable = layered_integral
@@ -75,5 +75,4 @@
   file_base = out
   output_initial = true
   exodus = true
-  consolue = true
 []

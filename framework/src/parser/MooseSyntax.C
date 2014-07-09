@@ -40,7 +40,6 @@ void associateSyntax(Syntax & syntax, ActionFactory & action_factory)
   syntax.registerActionSyntax("AddScalarKernelAction", "AuxScalarKernels/*", "add_aux_scalar_kernel");
 
   syntax.registerActionSyntax("AddBCAction", "BCs/*", "add_bc");
-  syntax.registerActionSyntax("AddBCAction", "AuxBCs/*", "add_aux_bc");
 
   syntax.registerActionSyntax("CreateProblemAction", "Problem");
   syntax.registerActionSyntax("SetupMeshAction", "Mesh");
@@ -81,15 +80,10 @@ void associateSyntax(Syntax & syntax, ActionFactory & action_factory)
   syntax.registerActionSyntax("SetupPostprocessorDataAction", "Postprocessors/*");
   syntax.registerActionSyntax("AddPostprocessorAction", "Postprocessors/*");
 
+  syntax.registerActionSyntax("AddVectorPostprocessorAction", "VectorPostprocessors/*");
+
   syntax.registerActionSyntax("AddDamperAction", "Dampers/*");
 
-  // \todo{remove after new output system is in place}
-  /*
-  syntax.registerActionSyntax("RecoverBaseAction", "Output");
-  syntax.registerActionSyntax("SetupOutputAction", "Output");
-  syntax.registerActionSyntax("SetupOutputNameAction", "Output");
-  syntax.registerActionSyntax("SetupOverSamplingAction", "Output/OverSampling");
-  */
   syntax.registerActionSyntax("AddOutputAction", "Outputs/*");
   syntax.registerActionSyntax("CommonOutputAction", "Outputs");
 
@@ -97,6 +91,7 @@ void associateSyntax(Syntax & syntax, ActionFactory & action_factory)
   syntax.registerActionSyntax("SetupPreconditionerAction", "Preconditioning/*");
   syntax.registerActionSyntax("AddSplitAction","Splits/*");
 
+  syntax.registerActionSyntax("DetermineSystemType", "Executioner");
   syntax.registerActionSyntax("CreateExecutionerAction", "Executioner");
   syntax.registerActionSyntax("SetupTimeStepperAction", "Executioner/TimeStepper");
   syntax.registerActionSyntax("SetupTimePeriodsAction", "Executioner/TimePeriods/*");

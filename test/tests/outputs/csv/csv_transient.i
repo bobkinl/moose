@@ -3,6 +3,7 @@
   dim = 2
   nx = 10
   ny = 10
+  distribution = serial
 []
 
 [Variables]
@@ -85,7 +86,5 @@
 
 [Outputs]
   output_initial = true
-  console = true
   csv = true
-  output_initial = true
 []

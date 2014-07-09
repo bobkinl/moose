@@ -53,11 +53,7 @@
   [./console]
     type = Console
     perf_log = true
+    nonlinear_residuals = true
     linear_residuals = true
   [../]
-#  checkpoint = true
-#  [./checkpoint]
-#    type = Checkpoint
-#    num_files = 1
-#  [../]
 []

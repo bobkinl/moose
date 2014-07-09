@@ -56,7 +56,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./prop]
     type = MaterialRealAux
     property = matp
@@ -86,7 +86,7 @@
 
 [Outputs]
   output_initial = true
-  [./exodus]
+  [./out]
     type = Exodus
     elemental_as_nodal = true
   [../]

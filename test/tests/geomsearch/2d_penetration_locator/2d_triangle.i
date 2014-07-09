@@ -36,7 +36,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./distance]
     type = PenetrationAux
     variable = gap_distance
@@ -60,6 +60,6 @@
   exodus = true
   [./console]
     type = Console
-    pref_log = true
+    perf_log = true
   [../]
 []

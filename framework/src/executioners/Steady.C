@@ -60,27 +60,15 @@ Steady::init()
 {
   if (_app.isRecovering())
   {
-    Moose::out<<"\nCannot recover steady solves!\nExiting...\n"<<std::endl;
+    _console << "\nCannot recover steady solves!\nExiting...\n" << std::endl;
     return;
   }
 
   checkIntegrity();
-
   _problem.initialSetup();
+
   Moose::setup_perf_log.push("Output Initial Condition","Setup");
-
-  // Write the output
   _output_warehouse.outputInitial();
-
-  if (_output_initial)
-  {
-    _problem.output();
-    _problem.outputPostprocessors();
-    _problem.outputRestart();
-  }
-
-
-
   Moose::setup_perf_log.pop("Output Initial Condition","Setup");
 }
 
@@ -90,8 +78,6 @@ Steady::execute()
   if (_app.isRecovering())
     return;
 
-  if (_app.hasLegacyOutput())
-    Moose::out << "Time: " << _time_step << '\n';
   preExecute();
 
   // first step in any steady state solve is always 1 (preserving backwards compatibility)
@@ -102,12 +88,11 @@ Steady::execute()
 
   // Define the refinement loop
   unsigned int steps = _problem.adaptivity().getSteps();
-  for(unsigned int r_step=0; r_step<=steps; r_step++)
+  for (unsigned int r_step=0; r_step<=steps; r_step++)
   {
 #endif //LIBMESH_ENABLE_AMR
     _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::PRE_AUX);
     preSolve();
-    _problem.updateMaterials();
     _problem.timestepSetup();
     _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::POST_AUX);
     _problem.solve();
@@ -121,10 +106,6 @@ Steady::execute()
     _problem.computeIndicatorsAndMarkers();
 
     _output_warehouse.outputStep();
-
-    _problem.output();
-    _problem.outputPostprocessors();
-    _problem.outputRestart();
 
 #ifdef LIBMESH_ENABLE_AMR
     if (r_step != steps)

@@ -58,7 +58,7 @@ AddPeriodicBCAction::setPeriodicVars(PeriodicBoundaryBase & p, const std::vector
 
   for (std::vector<VariableName>::const_iterator it = var_names_ptr->begin(); it != var_names_ptr->end(); ++it)
   {
-    unsigned int var_num = nl.getVariable(0, (*it)).index();
+    unsigned int var_num = nl.getVariable(0, (*it)).number();
 
     p.set_variable(var_num);
     _mesh->addPeriodicVariable(var_num, p.myboundary, p.pairedboundary);
@@ -74,7 +74,7 @@ AddPeriodicBCAction::autoTranslationBoundaries()
     if (_mesh->isParallelMesh())
     {
       const std::set<BoundaryID> & ids = _mesh->meshBoundaryIds();
-      for(std::set<BoundaryID>::const_iterator id_it = ids.begin();
+      for (std::set<BoundaryID>::const_iterator id_it = ids.begin();
           id_it != ids.end();
           ++id_it)
         _problem->addGhostedBoundary(*id_it);

@@ -50,8 +50,7 @@
 
 [Outputs]
   exodus = true
-  console = true
-  [./checkpoint]
+  [./out]
     type = Checkpoint
     interval = 3
     num_files = 2

@@ -9,12 +9,9 @@ class ConstitutiveModel;
 class SolidModel;
 class SymmElasticityTensor;
 class VolumetricModel;
-namespace Elk
-{
 namespace SolidMechanics
 {
 class Element;
-}
 }
 
 
@@ -22,7 +19,7 @@ template<>
 InputParameters validParams<SolidModel>();
 
 /**
- * SolidModel is the base class for all solid mechanics material models in Elk.
+ * SolidModel is the base class for all this module's solid mechanics material models.
  */
 class SolidModel : public Material
 {
@@ -46,6 +43,19 @@ public:
     CR_POWER,
     CR_UNKNOWN
   };
+
+  QBase * qrule()
+  {
+    return _qrule;
+  }
+  const Point & q_point( unsigned i ) const
+  {
+    return _q_point[i];
+  }
+  Real JxW( unsigned i ) const
+  {
+    return _JxW[i];
+  }
 
 protected:
   Moose::CoordinateSystemType _coord_type;
@@ -189,7 +199,7 @@ protected:
     return _local_elasticity_tensor;
   }
 
-  const Elk::SolidMechanics::Element * element() const
+  const SolidMechanics::Element * element() const
   {
     return _element;
   }
@@ -234,14 +244,12 @@ private:
 
   void computeCrackStrainAndOrientation( ColumnMajorMatrix & principal_strain );
 
-  Elk::SolidMechanics::Element * createElement( const std::string & name,
-                                                InputParameters & parameters );
+  SolidMechanics::Element * createElement( const std::string & name,
+                                           InputParameters & parameters );
 
-  Elk::SolidMechanics::Element * _element;
+  SolidMechanics::Element * _element;
 
   SymmElasticityTensor * _local_elasticity_tensor;
-
-
 
 };
 

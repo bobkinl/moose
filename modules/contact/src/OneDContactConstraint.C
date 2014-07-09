@@ -43,7 +43,7 @@ OneDContactConstraint::timestepSetup()
 void
 OneDContactConstraint::jacobianSetup()
 {
-  if(_jacobian_update)
+  if (_jacobian_update)
     updateContactSet();
 }
 
@@ -97,13 +97,13 @@ OneDContactConstraint::computeQpResidual(Moose::ConstraintType type)
 {
   PenetrationInfo * pinfo = _penetration_locator._penetration_info[_current_node->id()];
 
-  switch(type)
+  switch (type)
   {
   case Moose::Slave:
     // return (_u_slave[_qp] - _u_master[_qp])*_test_slave[_i][_qp];
     return ((*_current_node)(0) - pinfo->_closest_point(0)) * _test_slave[_i][_qp];
   case Moose::Master:
-    double slave_resid = _residual_copy(_current_node->dof_number(0, _var.index(), 0));
+    double slave_resid = _residual_copy(_current_node->dof_number(0, _var.number(), 0));
     return slave_resid*_test_master[_i][_qp];
   }
   return 0;
@@ -113,14 +113,14 @@ Real
 OneDContactConstraint::computeQpJacobian(Moose::ConstraintJacobianType type)
 {
   double slave_jac = 0;
-  switch(type)
+  switch (type)
   {
   case Moose::SlaveSlave:
     return _phi_slave[_j][_qp]*_test_slave[_i][_qp];
   case Moose::SlaveMaster:
     return -_phi_master[_j][_qp]*_test_slave[_i][_qp];
   case Moose::MasterSlave:
-    slave_jac = (*_jacobian)(_current_node->dof_number(0, _var.index(), 0), _connected_dof_indices[_j]);
+    slave_jac = (*_jacobian)(_current_node->dof_number(0, _var.number(), 0), _connected_dof_indices[_j]);
     return slave_jac*_test_master[_i][_qp];
   case Moose::MasterMaster:
     return 0;

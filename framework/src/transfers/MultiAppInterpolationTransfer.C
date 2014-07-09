@@ -63,11 +63,17 @@ MultiAppInterpolationTransfer::MultiAppInterpolationTransfer(const std::string &
 }
 
 void
+MultiAppInterpolationTransfer::initialSetup()
+{
+  variableIntegrityCheck(_to_var_name);
+}
+
+void
 MultiAppInterpolationTransfer::execute()
 {
   Moose::out << "Beginning InterpolationTransfer " << _name << std::endl;
 
-  switch(_direction)
+  switch (_direction)
   {
     case TO_MULTIAPP:
     {
@@ -95,13 +101,13 @@ MultiAppInterpolationTransfer::execute()
 
       InverseDistanceInterpolation<LIBMESH_DIM> * idi;
 
-      switch(_interp_type)
+      switch (_interp_type)
       {
         case 0:
-          idi = new InverseDistanceInterpolation<LIBMESH_DIM>(libMesh::CommWorld, _num_points, _power);
+          idi = new InverseDistanceInterpolation<LIBMESH_DIM>(from_sys.comm(), _num_points, _power);
           break;
         case 1:
-          idi = new RadialBasisInterpolation<LIBMESH_DIM>(libMesh::CommWorld, _radius);
+          idi = new RadialBasisInterpolation<LIBMESH_DIM>(from_sys.comm(), _radius);
           break;
         default:
           mooseError("Unknown interpolation type!");
@@ -122,7 +128,7 @@ MultiAppInterpolationTransfer::execute()
         MeshBase::const_node_iterator from_nodes_it    = from_mesh->local_nodes_begin();
         MeshBase::const_node_iterator from_nodes_end   = from_mesh->local_nodes_end();
 
-        for(; from_nodes_it != from_nodes_end; ++from_nodes_it)
+        for (; from_nodes_it != from_nodes_end; ++from_nodes_it)
         {
           Node * from_node = *from_nodes_it;
 
@@ -138,7 +144,7 @@ MultiAppInterpolationTransfer::execute()
         MeshBase::const_element_iterator from_elements_it    = from_mesh->local_elements_begin();
         MeshBase::const_element_iterator from_elements_end   = from_mesh->local_elements_end();
 
-        for(; from_elements_it != from_elements_end; ++from_elements_it)
+        for (; from_elements_it != from_elements_end; ++from_elements_it)
         {
           Elem * from_elem = *from_elements_it;
 
@@ -153,7 +159,7 @@ MultiAppInterpolationTransfer::execute()
       // We have only set local values - prepare for use by gathering remote gata
       idi->prepare_for_use();
 
-      for(unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
+      for (unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
       {
         if (_multi_app->hasLocalApp(i))
         {
@@ -161,9 +167,6 @@ MultiAppInterpolationTransfer::execute()
 
           // Loop over the master nodes and set the value of the variable
           System * to_sys = find_sys(_multi_app->appProblem(i)->es(), _to_var_name);
-
-          if (!to_sys)
-            mooseError("Cannot find variable "<<_to_var_name<<" for "<<_name<<" Transfer");
 
           unsigned int sys_num = to_sys->number();
           unsigned int var_num = to_sys->variable_number(_to_var_name);
@@ -183,7 +186,7 @@ MultiAppInterpolationTransfer::execute()
             MeshBase::const_node_iterator node_it = mesh->local_nodes_begin();
             MeshBase::const_node_iterator node_end = mesh->local_nodes_end();
 
-            for(; node_it != node_end; ++node_it)
+            for (; node_it != node_end; ++node_it)
             {
               Node * node = *node_it;
 
@@ -213,7 +216,7 @@ MultiAppInterpolationTransfer::execute()
             MeshBase::const_element_iterator elem_it = mesh->local_elements_begin();
             MeshBase::const_element_iterator elem_end = mesh->local_elements_end();
 
-            for(; elem_it != elem_end; ++elem_it)
+            for (; elem_it != elem_end; ++elem_it)
             {
               Elem * elem = *elem_it;
 
@@ -281,13 +284,13 @@ MultiAppInterpolationTransfer::execute()
 
       InverseDistanceInterpolation<LIBMESH_DIM> * idi;
 
-      switch(_interp_type)
+      switch (_interp_type)
       {
         case 0:
-          idi = new InverseDistanceInterpolation<LIBMESH_DIM>(libMesh::CommWorld, _num_points, _power);
+          idi = new InverseDistanceInterpolation<LIBMESH_DIM>(to_sys.comm(), _num_points, _power);
           break;
         case 1:
-          idi = new RadialBasisInterpolation<LIBMESH_DIM>(libMesh::CommWorld, _radius);
+          idi = new RadialBasisInterpolation<LIBMESH_DIM>(to_sys.comm(), _radius);
           break;
         default:
           mooseError("Unknown interpolation type!");
@@ -303,7 +306,7 @@ MultiAppInterpolationTransfer::execute()
       std::vector<std::string> vars;
       vars.push_back(_to_var_name);
 
-      for(unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
+      for (unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
       {
         if (!_multi_app->hasLocalApp(i))
           continue;
@@ -339,7 +342,7 @@ MultiAppInterpolationTransfer::execute()
           MeshBase::const_node_iterator from_nodes_it    = from_mesh->local_nodes_begin();
           MeshBase::const_node_iterator from_nodes_end   = from_mesh->local_nodes_end();
 
-          for(; from_nodes_it != from_nodes_end; ++from_nodes_it)
+          for (; from_nodes_it != from_nodes_end; ++from_nodes_it)
           {
             Node * from_node = *from_nodes_it;
 
@@ -355,7 +358,7 @@ MultiAppInterpolationTransfer::execute()
           MeshBase::const_element_iterator from_elements_it    = from_mesh->local_elements_begin();
           MeshBase::const_element_iterator from_elements_end   = from_mesh->local_elements_end();
 
-          for(; from_elements_it != from_elements_end; ++from_elements_it)
+          for (; from_elements_it != from_elements_end; ++from_elements_it)
           {
             Elem * from_element = *from_elements_it;
 
@@ -379,7 +382,7 @@ MultiAppInterpolationTransfer::execute()
         MeshBase::const_node_iterator node_it = to_mesh->local_nodes_begin();
         MeshBase::const_node_iterator node_end = to_mesh->local_nodes_end();
 
-        for(; node_it != node_end; ++node_it)
+        for (; node_it != node_end; ++node_it)
         {
           Node * node = *node_it;
 
@@ -407,7 +410,7 @@ MultiAppInterpolationTransfer::execute()
         MeshBase::const_element_iterator elem_it = to_mesh->local_elements_begin();
         MeshBase::const_element_iterator elem_end = to_mesh->local_elements_end();
 
-        for(; elem_it != elem_end; ++elem_it)
+        for (; elem_it != elem_end; ++elem_it)
         {
           Elem * elem = *elem_it;
 
@@ -449,7 +452,7 @@ Node * MultiAppInterpolationTransfer::getNearestNode(const Point & p, Real & dis
   distance = std::numeric_limits<Real>::max();
   Node * nearest = NULL;
 
-  for(MeshBase::const_node_iterator node_it = nodes_begin; node_it != nodes_end; ++node_it)
+  for (MeshBase::const_node_iterator node_it = nodes_begin; node_it != nodes_end; ++node_it)
   {
     Node & node = *(*node_it);
     Real current_distance = (p-node).size();
@@ -463,4 +466,3 @@ Node * MultiAppInterpolationTransfer::getNearestNode(const Point & p, Real & dis
 
   return nearest;
 }
-

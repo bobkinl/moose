@@ -5,15 +5,14 @@
 
 //Forward Declarations
 class SymmElasticityTensor;
-namespace Elk
-{
+
 namespace SolidMechanics
 {
 
 class SphericalR : public Element
 {
 public:
-  SphericalR(const std::string & name, InputParameters parameters);
+  SphericalR(SolidModel & solid_model, const std::string & name, InputParameters parameters);
   virtual ~SphericalR();
 
 protected:
@@ -36,7 +35,6 @@ protected:
 
 };
 
-}
 }
 
 #endif

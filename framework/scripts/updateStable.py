@@ -22,22 +22,34 @@ Where repo_revision is the target merge revision.
 
 """
 
+def buildList(dir_path):
+  if os.path.exists(os.path.join(dir_path, 'run_tests')):
+    run_tests = open(os.path.join(dir_path, 'run_tests'))
+    run_tests_contents = run_tests.read()
+    run_tests.close()
+    try:
+      return re.findall(r"app_name\s+=\s+'.*?([^/]*?)'", run_tests_contents, re.M)[0]
+    except IndexError:
+      return os.path.basename(dir_path)
+
 def buildStatus():
   tmp_apps = []
   tmp_passed = []
   # Open line itemed list of applications passing their tests
-  log_file = open('moose/framework/test_results.log', 'r')
+  log_file = open('moose/test_results.log', 'r')
   tmp_passed = string.split(log_file.read(), '\n')
   log_file.close()
   # Remove trailing \n element which creates an empty item
   tmp_passed.pop()
   # Get a list of applications tested, by searching each directory presently containing a run_test application
   for app_dir in os.listdir('.'):
-    if os.path.exists(os.path.join(os.getcwd(), app_dir, 'run_tests')):
-      tmp_apps.append(app_dir)
+    tmp_apps.append(buildList(os.path.join(os.getcwd(), app_dir)))
+  # Now get any applications inside the moose directory (modules, test, unit)
+  for app_dir in os.listdir('moose'):
+    tmp_apps.append(buildList(os.path.join(os.getcwd(), 'moose', app_dir)))
   # Return boolean if all application tests passed
-  if len(((set(tmp_apps) - excluded_applications) - set(tmp_passed))) != 0:
-    print 'Failing tests:', string.join(((set(tmp_apps) - excluded_applications) - set(tmp_passed)))
+  if len(((set(tmp_apps) - excluded_applications) - set(tmp_passed) - set([None]))) != 0:
+    print 'Failing tests:', string.join(((set(tmp_apps) - excluded_applications) - set(tmp_passed) - set([None])))
     return False
   else:
     return True

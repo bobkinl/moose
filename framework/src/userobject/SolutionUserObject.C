@@ -1,9 +1,22 @@
+/****************************************************************/
+/*               DO NOT MODIFY THIS HEADER                      */
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*           (c) 2010 Battelle Energy Alliance, LLC             */
+/*                   ALL RIGHTS RESERVED                        */
+/*                                                              */
+/*          Prepared by Battelle Energy Alliance, LLC           */
+/*            Under Contract No. DE-AC07-05ID14517              */
+/*            With the U. S. Department of Energy               */
+/*                                                              */
+/*            See COPYRIGHT for full restrictions               */
+/****************************************************************/
 // MOOSE includes
 #include "MooseError.h"
 #include "SolutionUserObject.h"
+#include "RotationMatrix.h"
 
 // libMesh includes
-//#include "MooseMesh.h"
 #include "libmesh/equation_systems.h"
 #include "libmesh/mesh_function.h"
 #include "libmesh/numeric_vector.h"
@@ -19,13 +32,12 @@ InputParameters validParams<SolutionUserObject>()
   InputParameters params = validParams<GeneralUserObject>();
 
   // Add required parameters
-  params.addRequiredParam<std::string>("mesh", "The name of the mesh file (must be xda or exodusII file.");
-  //params.addRequiredParam<std::vector<std::string> >("variables", "The name of the variable from the file you want to use for values.");
+  params.addRequiredParam<MeshFileName>("mesh", "The name of the mesh file (must be xda or exodusII file).");
   params.addParam<std::vector<std::string> >("nodal_variables", "The name of the nodal variables from the file you want to use for values.");
   params.addParam<std::vector<std::string> >("elemental_variables", "The name of the element variables from the file you want to use for values.");
 
   // When using XDA files the following must be defined
-  params.addParam<std::string>("es", "The name of the file holding the equation system info in xda format (xda only).");
+  params.addParam<FileName>("es", "The name of the file holding the equation system info in xda format (xda only).");
   params.addParam<std::string>("system", "NonlinearSystem", "The name of the system to pull values out of (xda only).");
 
   // When using ExodusII a specific time is extracted
@@ -36,18 +48,33 @@ InputParameters validParams<SolutionUserObject>()
   params.set<MooseEnum>("execute_on") = "timestep_begin";
 
   // Add ability to perform coordinate transformation: scale, factor
-  params.addParam<std::vector<Real> >("coord_scale", std::vector<Real>(LIBMESH_DIM,1), "Scaling parameter for x,y,z coordiantes (e.g. x*scale)");
-  params.addParam<std::vector<Real> >("coord_factor", std::vector<Real>(LIBMESH_DIM,0), "Transformation factors for x,y,z coordiantes (e.g., x + factor)");
-
+  params.addParam<std::vector<Real> >("coord_scale", "This name has been deprecated.  Please use scale instead");
+  params.addParam<std::vector<Real> >("coord_factor", "This name has been deprecated.  Please use translation instead");
+  params.addParam<std::vector<Real> >("scale", std::vector<Real>(LIBMESH_DIM,1), "Scale factor for points in the simulation");
+  params.addParam<std::vector<Real> >("scale_multiplier", std::vector<Real>(LIBMESH_DIM,1), "Scale multiplying factor for points in the simulation");
+  params.addParam<std::vector<Real> >("translation", std::vector<Real>(LIBMESH_DIM,0), "Translation factors for x,y,z coordinates of the simulation");
+  params.addParam<RealVectorValue>("rotation0_vector", RealVectorValue(0, 0, 1), "Vector about which to rotate points of the simulation.");
+  params.addParam<Real>("rotation0_angle", 0.0, "Anticlockwise rotation angle (in degrees) to use for rotation about rotation0_vector.");
+  params.addParam<RealVectorValue>("rotation1_vector", RealVectorValue(0, 0, 1), "Vector about which to rotate points of the simulation.");
+  params.addParam<Real>("rotation1_angle", 0.0, "Anticlockwise rotation angle (in degrees) to use for rotation about rotation1_vector.");
+  params.addDeprecatedParam<bool>("legacy_read", false, "Utilize the legacy call to EquationsSystems::read, this may be required for older XDA/XDR files",
+                                  "This option is for legacy support and will be removed on 10/1/2014.\nThe xda/xdr files being read should be regenerated and the flag removed.");
+  // following lines build the default_transformation_order
+  MooseEnum t1("rotation0, translation, scale, rotation1, scale_multiplier", "translation");
+  MooseEnum t2("rotation0, translation, scale, rotation1, scale_multiplier", "scale");
+  std::vector<MooseEnum> default_transformation_order;
+  default_transformation_order.push_back(t1);
+  default_transformation_order.push_back(t2);
+  params.addParam<std::vector<MooseEnum> >("transformation_order", default_transformation_order, "The order to perform the operations in.  Define R0 to be the rotation matrix encoded by rotation0_vector and rotation0_angle.  Similarly for R1.  Denote the scale by s, the scale_multiplier by m, and the translation by t.  Then, given a point x in the simulation, if transformation_order = 'rotation0 scale_multiplier translation scale rotation1' then form p = R1*(R0*x*m - t)/s.  Then the values provided by the SolutionUserObject at point x in the simulation are the variable values at point p in the mesh.");
   // Return the parameters
   return params;
 }
 
 SolutionUserObject::SolutionUserObject(const std::string & name, InputParameters parameters) :
     GeneralUserObject(name, parameters),
-    _file_type(MooseEnum("xda=0, exodusII=1")),
-    _mesh_file(getParam<std::string>("mesh")),
-    _es_file(getParam<std::string>("es")),
+    _file_type(MooseEnum("xda=0, exodusII=1, xdr=2")),
+    _mesh_file(getParam<MeshFileName>("mesh")),
+    _es_file(getParam<FileName>("es")),
     _system_name(getParam<std::string>("system")),
     _nodal_vars(isParamValid("nodal_variables") ?
                 getParam<std::vector<std::string> >("nodal_variables") : std::vector<std::string>()),
@@ -70,10 +97,63 @@ SolutionUserObject::SolutionUserObject(const std::string & name, InputParameters
     _exodus_times(NULL),
     _exodus_index1(-1),
     _exodus_index2(-1),
-    _scale(getParam<std::vector<Real> >("coord_scale")),
-    _factor(getParam<std::vector<Real> >("coord_factor"))
+    _scale(getParam<std::vector<Real> >("scale")),
+    _scale_multiplier(getParam<std::vector<Real> >("scale_multiplier")),
+    _translation(getParam<std::vector<Real> >("translation")),
+    _rotation0_vector(getParam<RealVectorValue>("rotation0_vector")),
+    _rotation0_angle(getParam<Real>("rotation0_angle")),
+    _r0(RealTensorValue()),
+    _rotation1_vector(getParam<RealVectorValue>("rotation1_vector")),
+    _rotation1_angle(getParam<Real>("rotation1_angle")),
+    _r1(RealTensorValue()),
+    _transformation_order(getParam<std::vector<MooseEnum> >("transformation_order")),
+    _legacy_read(getParam<bool>("legacy_read"))
 {
   _exec_flags = EXEC_INITIAL;
+
+  if (!parameters.isParamValid("nodal_variables") && !parameters.isParamValid("elemental_variables"))
+    mooseError("In SolutionUserObject " << _name << ", must supply nodal_variables or elemental_variables");
+
+  if (parameters.isParamValid("coord_scale"))
+  {
+    mooseWarning("Parameter name coord_scale is deprecated.  Please use scale instead.");
+    _scale = getParam<std::vector<Real> >("coord_scale");
+  }
+
+  if (parameters.isParamValid("coord_factor"))
+  {
+    mooseWarning("Parameter name coord_factor is deprecated.  Please use translation instead.");
+    _translation = getParam<std::vector<Real> >("coord_factor");
+  }
+
+  // form rotation matrices with the specified angles
+  Real halfPi = std::acos(0.0);
+  Real a;
+  Real b;
+
+  a = std::cos(halfPi*_rotation0_angle/90);
+  b = std::sin(halfPi*_rotation0_angle/90);
+  // the following is an anticlockwise rotation about z
+  RealTensorValue rot0_z(
+  a, -b, 0,
+  b, a, 0,
+  0, 0, 1);
+  // form the rotation matrix that will take rotation0_vector to the z axis
+  RealTensorValue vec0_to_z = RotationMatrix::rotVecToZ(_rotation0_vector);
+  // _r0 is then: rotate points so vec0 lies along z; then rotate about angle0; then rotate points back
+  _r0 = vec0_to_z.transpose()*(rot0_z*vec0_to_z);
+
+  a = std::cos(halfPi*_rotation1_angle/90);
+  b = std::sin(halfPi*_rotation1_angle/90);
+  // the following is an anticlockwise rotation about z
+  RealTensorValue rot1_z(
+  a, -b, 0,
+  b, a, 0,
+  0, 0, 1);
+  // form the rotation matrix that will take rotation1_vector to the z axis
+  RealTensorValue vec1_to_z = RotationMatrix::rotVecToZ(_rotation1_vector);
+  // _r1 is then: rotate points so vec1 lies along z; then rotate about angle1; then rotate points back
+  _r1 = vec1_to_z.transpose()*(rot1_z*vec1_to_z);
 }
 
 SolutionUserObject::~SolutionUserObject()
@@ -99,23 +179,35 @@ SolutionUserObject::~SolutionUserObject()
 void
 SolutionUserObject::readXda()
 {
-  // Check that the EquationSystems XDA file
-  if (_es_file == "")
-      mooseError("In SolutionUserObject, es must be supplied when file_type=xda");
 
-  // Check that a system name is defined, for extraction from the file
-  if (_system_name == "")
-      mooseError("In SolutionUserObject, system must be supplied when file_type=xda");
+  // Check that the required files exist
+  MooseUtils::checkFileReadable(_es_file);
+  MooseUtils::checkFileReadable(_mesh_file);
 
   // Read the libmesh::mesh from the xda file
   _mesh->read(_mesh_file);
 
-  // Create, read, and update the libmesh::EquationSystems
+  // Create the libmesh::EquationSystems
   _es = new EquationSystems(*_mesh);
-  _es->read(_es_file);
-  _es->update();
 
-  // Store the EquationSystems name locally
+  // Use the legacy read
+  if (_legacy_read)
+    _es->read(_es_file);
+
+  // Use new read syntax (binary)
+  else if (_file_type ==  "xdr")
+    _es->read(_es_file, DECODE, EquationSystems::READ_HEADER | EquationSystems::READ_DATA | EquationSystems::READ_ADDITIONAL_DATA);
+
+  // Use new read syntax
+  else if (_file_type ==  "xda")
+    _es->read(_es_file, READ, EquationSystems::READ_HEADER | EquationSystems::READ_DATA | EquationSystems::READ_ADDITIONAL_DATA);
+
+  // This should never occur, just incase produce an error
+  else
+    mooseError("Faild to determine proper read method for XDA/XDR equation system file: " << _es_file);
+
+  // Update and store the EquationSystems name locally
+  _es->update();
   _system = &_es->get_system(_system_name);
 }
 
@@ -211,7 +303,7 @@ SolutionUserObject::readExodusII()
     _system2->get_all_variable_numbers(var_num2);
 
     // Need to pull down a full copy of this vector on every processor so we can get values in parallel
-    _serialized_solution2 = NumericVector<Number>::build().release();
+    _serialized_solution2 = NumericVector<Number>::build(_communicator).release();
     _serialized_solution2->init(_system2->n_dofs(), false, SERIAL);
     _system2->solution->localize(*_serialized_solution2);
 
@@ -305,7 +397,7 @@ SolutionUserObject::initialSetup()
   // Create a libmesh::Mesh object for storing the loaded data.  Since
   // SolutionUserObject is restricted to only work with SerialMesh
   // (see above) we can force the Mesh used here to be a SerialMesh.
-  _mesh = new SerialMesh;
+  _mesh = new SerialMesh(_communicator);
 
   // ExodusII mesh file supplied
   if (MooseUtils::hasExtension(_mesh_file, "e"))
@@ -321,12 +413,18 @@ SolutionUserObject::initialSetup()
     readXda();
   }
 
+  else if (MooseUtils::hasExtension(_mesh_file, "xdr"))
+  {
+    _file_type = "xdr";
+    readXda();
+  }
+
   // Produce an error for an unknown file type
   else
-    mooseError("In SolutionUserObject, invalid file type (only .xda and .e supported)");
+    mooseError("In SolutionUserObject, invalid file type (only .xda, .xdr, and .e supported)");
 
   // Intilize the serial solution vector
-  _serialized_solution = NumericVector<Number>::build().release();
+  _serialized_solution = NumericVector<Number>::build(_communicator).release();
   _serialized_solution->init(_system->n_dofs(), false, SERIAL);
 
   // Pull down a full copy of this vector on every processor so we can get values in parallel
@@ -440,9 +538,23 @@ SolutionUserObject::pointValue(Real t, const Point & p, const std::string & var_
   // Create copy of point
   Point pt(p);
 
-  // Apply scaling and factor
-  for (unsigned int i=0; i<LIBMESH_DIM; ++i)
-    pt(i) = (pt(i) - _factor[i])/_scale[i];
+  // do the transformations
+  for (unsigned int trans_num = 0 ; trans_num < _transformation_order.size() ; ++trans_num)
+  {
+    if (_transformation_order[trans_num] == "rotation0")
+      pt = _r0*pt;
+    else if (_transformation_order[trans_num] == "translation")
+      for (unsigned int i=0; i<LIBMESH_DIM; ++i)
+        pt(i) -= _translation[i];
+    else if (_transformation_order[trans_num] == "scale")
+      for (unsigned int i=0; i<LIBMESH_DIM; ++i)
+        pt(i) /= _scale[i];
+    else if (_transformation_order[trans_num] == "scale_multiplier")
+      for (unsigned int i=0; i<LIBMESH_DIM; ++i)
+        pt(i) *= _scale_multiplier[i];
+    else if (_transformation_order[trans_num] == "rotation1")
+      pt = _r1*pt;
+  }
 
   // Extract the value at the current point
   Real val = evalMeshFunction(pt, var_name, 1);

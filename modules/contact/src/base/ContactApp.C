@@ -14,7 +14,8 @@
 #include "OneDContactConstraint.h"
 #include "MultiDContactConstraint.h"
 #include "GluedContactConstraint.h"
-#include "SparsityBasedGluedContactConstraint.h"
+#include "MechanicalContactConstraint.h"
+#include "SparsityBasedContactConstraint.h"
 #include "FrictionalContactProblem.h"
 #include "ReferenceResidualProblem.h"
 #include "NodalArea.h"
@@ -31,7 +32,7 @@ InputParameters validParams<ContactApp>()
 ContactApp::ContactApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   ContactApp::registerObjects(_factory);
@@ -58,7 +59,8 @@ ContactApp::registerObjects(Factory & factory)
   registerConstraint(OneDContactConstraint);
   registerConstraint(MultiDContactConstraint);
   registerConstraint(GluedContactConstraint);
-  registerConstraint(SparsityBasedGluedContactConstraint);
+  registerConstraint(MechanicalContactConstraint);
+  registerConstraint(SparsityBasedContactConstraint);
   registerProblem(FrictionalContactProblem);
   registerProblem(ReferenceResidualProblem);
   registerUserObject(NodalArea);
@@ -81,10 +83,10 @@ ContactApp::associateSyntax(Syntax & syntax, ActionFactory & action_factory)
 
   registerAction(ContactAction, "add_dg_kernel");
 
-  registerAction(ContactPenetrationAuxAction, "add_aux_bc");
+  registerAction(ContactPenetrationAuxAction, "add_aux_kernel");
   registerAction(ContactPenetrationVarAction, "add_aux_variable");
 
-  registerAction(ContactPressureAuxAction, "add_aux_bc");
+  registerAction(ContactPressureAuxAction, "add_aux_kernel");
   registerAction(ContactPressureVarAction, "add_aux_variable");
 
   registerAction(NodalAreaAction, "add_user_object");

@@ -111,7 +111,7 @@ ComputeUserObjectsThread::subdomainChanged()
 
   // Boundary UserObject Dependencies (SideUserObjects and NodalUserObjects)
   const std::set<unsigned int> & bnd_ids = _mesh.getSubdomainBoundaryIds(_subdomain);
-  for(std::set<unsigned int>::const_iterator id_it = bnd_ids.begin(); id_it != bnd_ids.end(); ++id_it)
+  for (std::set<unsigned int>::const_iterator id_it = bnd_ids.begin(); id_it != bnd_ids.end(); ++id_it)
   {
     // SideUserObjects
     {
@@ -188,6 +188,7 @@ ComputeUserObjectsThread::onBoundary(const Elem *elem, unsigned int side, Bounda
   {
     _fe_problem.reinitElemFace(elem, side, bnd_id, _tid);
     _fe_problem.reinitMaterialsFace(_subdomain, _tid);
+    _fe_problem.reinitMaterialsBoundary(bnd_id, _tid);
 
     for (std::vector<SideUserObject *>::const_iterator side_UserObject_it = _user_objects[_tid].sideUserObjects(bnd_id, _group).begin();
          side_UserObject_it != _user_objects[_tid].sideUserObjects(bnd_id, _group).end();

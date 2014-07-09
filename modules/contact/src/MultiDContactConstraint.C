@@ -58,7 +58,7 @@ MultiDContactConstraint::MultiDContactConstraint(const std::string & name, Input
 void
 MultiDContactConstraint::timestepSetup()
 {
-  if(_component == 0)
+  if (_component == 0)
   {
     _penetration_locator._unlocked_this_step.clear();
     _penetration_locator._locked_this_step.clear();
@@ -69,7 +69,7 @@ MultiDContactConstraint::timestepSetup()
 void
 MultiDContactConstraint::jacobianSetup()
 {
-  if(_component == 0)
+  if (_component == 0)
     updateContactSet();
 }
 
@@ -99,14 +99,14 @@ MultiDContactConstraint::updateContactSet()
 
     RealVectorValue res_vec;
     // Build up residual vector
-    for(unsigned int i=0; i<_mesh_dimension; ++i)
+    for (unsigned int i=0; i<_mesh_dimension; ++i)
     {
       int dof_number = node->dof_number(0, _vars(i), 0);
       res_vec(i) = _residual_copy(dof_number);
     }
 
 //    Real resid = 0;
-    switch(_model)
+    switch (_model)
     {
     case CM_FRICTIONLESS:
 
@@ -124,10 +124,10 @@ MultiDContactConstraint::updateContactSet()
       break;
     }
 
-//    if(hpit != has_penetrated.end() && resid < 0)
+//    if (hpit != has_penetrated.end() && resid < 0)
 //      Moose::err<<resid<<std::endl;
 /*
-    if(hpit != has_penetrated.end() && resid < -.15)
+    if (hpit != has_penetrated.end() && resid < -.15)
     {
       Moose::err<<std::endl<<"Unlocking node "<<node->id()<<" because resid: "<<resid<<std::endl<<std::endl;
 
@@ -138,7 +138,6 @@ MultiDContactConstraint::updateContactSet()
     if (pinfo->_distance > 0 && hpit == has_penetrated.end())// && !unlocked_this_step[slave_node_num])
     {
 //      Moose::err<<std::endl<<"Locking node "<<node->id()<<" because distance: "<<pinfo->_distance<<std::endl<<std::endl;
-//      libMesh::print_trace();
 
       has_penetrated.insert(slave_node_num);
       locked_this_step[slave_node_num] = true;
@@ -177,7 +176,7 @@ MultiDContactConstraint::computeQpResidual(Moose::ConstraintType type)
 
   RealVectorValue res_vec;
   // Build up residual vector
-  for(unsigned int i=0; i<_mesh_dimension; ++i)
+  for (unsigned int i=0; i<_mesh_dimension; ++i)
   {
     int dof_number = node->dof_number(0, _vars(i), 0);
     res_vec(i) = _residual_copy(dof_number);
@@ -187,10 +186,10 @@ MultiDContactConstraint::computeQpResidual(Moose::ConstraintType type)
   const RealVectorValue pen_force(_penalty * distance_vec);
   Real resid = 0;
 
-  switch(type)
+  switch (type)
   {
   case Moose::Slave:
-    switch(_model)
+    switch (_model)
     {
     case CM_FRICTIONLESS:
 
@@ -212,7 +211,7 @@ MultiDContactConstraint::computeQpResidual(Moose::ConstraintType type)
     }
     return _test_slave[_i][_qp] * resid;
   case Moose::Master:
-    switch(_model)
+    switch (_model)
     {
     case CM_FRICTIONLESS:
 
@@ -239,14 +238,14 @@ MultiDContactConstraint::computeQpJacobian(Moose::ConstraintJacobianType type)
   PenetrationInfo * pinfo = _penetration_locator._penetration_info[_current_node->id()];
 
   double slave_jac = 0;
-  switch(type)
+  switch (type)
   {
   case Moose::SlaveSlave:
-    switch(_model)
+    switch (_model)
     {
     case CM_FRICTIONLESS:
 
-      slave_jac = pinfo->_normal(_component) * pinfo->_normal(_component) * ( _penalty*_phi_slave[_j][_qp] - (*_jacobian)(_current_node->dof_number(0, _var.index(), 0), _connected_dof_indices[_j]) );
+      slave_jac = pinfo->_normal(_component) * pinfo->_normal(_component) * ( _penalty*_phi_slave[_j][_qp] - (*_jacobian)(_current_node->dof_number(0, _var.number(), 0), _connected_dof_indices[_j]) );
       break;
 
     case CM_GLUED:
@@ -264,7 +263,7 @@ MultiDContactConstraint::computeQpJacobian(Moose::ConstraintJacobianType type)
     }
     return _test_slave[_i][_qp] * slave_jac;
   case Moose::SlaveMaster:
-    switch(_model)
+    switch (_model)
     {
     case CM_FRICTIONLESS:
 
@@ -286,7 +285,7 @@ MultiDContactConstraint::computeQpJacobian(Moose::ConstraintJacobianType type)
     }
     return _test_slave[_i][_qp] * slave_jac;
   case Moose::MasterSlave:
-    slave_jac = (*_jacobian)(_current_node->dof_number(0, _var.index(), 0), _connected_dof_indices[_j]);
+    slave_jac = (*_jacobian)(_current_node->dof_number(0, _var.number(), 0), _connected_dof_indices[_j]);
     return slave_jac*_test_master[_i][_qp];
   case Moose::MasterMaster:
     return 0;

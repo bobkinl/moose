@@ -16,6 +16,7 @@
 #include "RigidBodyModes3D.h"
 #include "CoupledDirectionalMeshHeightInterpolation.h"
 #include "CInterfacePosition.h"
+#include "ThermoDiffusion.h"
 
 template<>
 InputParameters validParams<MiscApp>()
@@ -27,7 +28,7 @@ InputParameters validParams<MiscApp>()
 MiscApp::MiscApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   MiscApp::registerObjects(_factory);
@@ -59,6 +60,7 @@ MiscApp::registerObjects(Factory & factory)
   registerKernel(JouleHeating);
   registerKernel(CoefTimeDerivative);
   registerKernel(GaussContForcing);
+  registerKernel(ThermoDiffusion);
 
   registerMaterial(Density);
 
@@ -72,6 +74,6 @@ MiscApp::registerObjects(Factory & factory)
 }
 
 void
-MiscApp::associateSyntax(Syntax & syntax, ActionFactory & action_factory)
+MiscApp::associateSyntax(Syntax & /*syntax*/, ActionFactory & /*action_factory*/)
 {
 }

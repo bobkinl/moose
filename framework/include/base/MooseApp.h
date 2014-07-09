@@ -29,6 +29,9 @@
 #include "ActionFactory.h"
 #include "OutputWarehouse.h"
 
+// libMesh includes
+#include "libmesh/parallel_object.h"
+
 class Executioner;
 class MooseApp;
 class RecoverBaseAction;
@@ -46,7 +49,7 @@ InputParameters validParams<MooseApp>();
  *
  * Each application should register its own objects and register its own special syntax
  */
-class MooseApp
+class MooseApp : public libMesh::ParallelObject
 {
 public:
   virtual ~MooseApp();
@@ -186,21 +189,14 @@ public:
   void disableCheckUnusedFlag();
 
   /**
-   * \todo{this could likely be removed after the new input system is in place}
-   */
-  std::string getSysInfo();
-
-  /**
-   * Prints the simulation information header
-   * \todo{This can likely go away after the new output system is in place, this
-   * is now in the Console object}
-   */
-  void printSimulationInfo(std::ostream & ostream);
-
-  /**
    * Retrieve the Executioner for this App.
    */
   Executioner * getExecutioner() { return _executioner; }
+
+  /**
+   * Set a Boolean indicating whether this app will use a Nonlinear or Eigen System.
+   */
+  bool & useNonlinear() { return _use_nonlinear; }
 
   /**
    * Retrieve the Factory associated with this App.
@@ -236,7 +232,7 @@ public:
   virtual void executeExecutioner();
 
   /**
-   * Returns true if the user specifed --parallel-mesh on the command line and false
+   * Returns true if the user specified --parallel-mesh on the command line and false
    * otherwise.
    */
   bool getParallelMeshOnCommandLine() const { return _parallel_mesh_on_command_line; }
@@ -245,6 +241,16 @@ public:
    * Whether or not this is a "recover" calculation.
    */
   bool isRecovering() { return _recover; }
+
+  /**
+   * Whether or not this is a "recover" calculation.
+   */
+  bool isRestarting() { return _restart; }
+
+  /**
+   * Return true if the recovery file base is set
+   */
+  bool hasRecoverFileBase() { return !_recover_base.empty(); }
 
   /**
    * The file_base for the recovery file.
@@ -262,21 +268,8 @@ public:
   bool halfTransient() { return _half_transient; }
 
   /**
-   * Returns true if the 'Output' block was included
-   * \todo{Remove this when the old system is removed}
-   */
-  bool hasLegacyOutput(){ return _legacy_output;}
-
-  /**
-   * Set the legacy output flag
-   * \todo{Remove this when the old system is removed}
-   */
-  void setLegacyOutput(bool state){ _legacy_output = state; }
-
-  /**
    * Store a map of outputter names and file numbers
-   * The MultiApp system requires this to get the file numbering to propogate down through the
-   * multiapps.
+   * The MultiApp system requires this to get the file numbering to propagate down through the Multiapps.
    * @param numbers Map of outputter names and file numbers
    *
    * @see MultiApp TransientMultiApp OutputWarehouse
@@ -291,6 +284,11 @@ public:
    * @see MultiApp TransientMultiApp
    */
   std::map<std::string, unsigned int> & getOutputFileNumbers(){ return _output_file_numbers; }
+
+  /**
+   * Return true if the output position has been set
+   */
+  bool hasOutputWarehouse(){ return _output_position_set; }
 
   /**
    * The OutputWarehouse for this App
@@ -308,6 +306,12 @@ public:
    */
   void setOutputWarehouse(OutputWarehouse * owh){ _alternate_output_warehouse = owh; }
 
+  /**
+   * Get SystemInfo object
+   * @return A pointer to the SystemInformation object
+   */
+  SystemInfo * getSystemInfo() { return _sys_info; }
+
 protected:
 
   MooseApp(const std::string & name, InputParameters parameters);
@@ -320,8 +324,8 @@ protected:
   /// Parameters of this object
   InputParameters _pars;
 
-  /// True if the old "Output" block was included \todo{remove when old output system is deleted}
-  bool _legacy_output;
+  /// The MPI communicator this App is going to use
+  const Parallel::Communicator * _comm;
 
   /// Input file name used
   std::string _input_filename;
@@ -358,6 +362,10 @@ protected:
   Parser _parser;
   /// Pointer to the executioner of this run (typically build by actions)
   Executioner * _executioner;
+
+  /// Boolean to indicate whether to use a Nonlinear or EigenSystem (inspected by actions)
+  bool _use_nonlinear;
+
   /// System Information
   SystemInfo * _sys_info;
 
@@ -379,20 +387,37 @@ protected:
   /// Whether or not this is a recovery run
   bool _recover;
 
+  /// Whether or not this is a restart run
+  bool _restart;
+
   /// The base name to recover from.  If blank then we will find the newest recovery file.
   std::string _recover_base;
 
   /// Whether or not this simulation should only run half its transient (useful for testing recovery)
   bool _half_transient;
 
-  /// Map of outputer name and file number (used by MultiApps to propogate file numbers down through the multiapps)
+  /// Map of outputer name and file number (used by MultiApps to propagate file numbers down through the multiapps)
   std::map<std::string, unsigned int> _output_file_numbers;
 
   /// OutputWarehouse object for this App
-  OutputWarehouse _output_warehouse;
+  OutputWarehouse * _output_warehouse;
 
   /// An alternate OutputWarehouse object (required for CoupledExecutioner)
   OutputWarehouse * _alternate_output_warehouse;
+
+private:
+
+  ///@{
+  /**
+   * Sets the restart/recover flags
+   * @param state The state to set the flag to
+   */
+  void setRestart(const bool & value){ _restart = value; }
+  void setRecover(const bool & value){ _recover = value; }
+  ///@}
+
+  // Allow FEProblem to set the recover/restart state, so make it a friend
+  friend class FEProblem;
 };
 
 #endif /* MOOSEAPP_H */

@@ -104,6 +104,8 @@ UserObjectWarehouse::updateDependObjects(const std::set<std::string> & depend_uo
     }
   }
 
+  // Sort the General UserObjects
+  sortUserObjects(_all_generic_user_objects);
   _pre_generic_user_objects.clear();
   _post_generic_user_objects.clear();
   for (std::vector<GeneralUserObject *>::iterator it2 = _all_generic_user_objects.begin(); it2 != _all_generic_user_objects.end(); ++it2)
@@ -118,27 +120,27 @@ UserObjectWarehouse::updateDependObjects(const std::set<std::string> & depend_uo
 void
 UserObjectWarehouse::initialSetup()
 {
-  for(std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
+  for (std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
       i!=_all_element_user_objects.end();
       ++i)
     (*i)->initialSetup();
 
-  for(std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
+  for (std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
       i!=_all_nodal_user_objects.end();
       ++i)
     (*i)->initialSetup();
 
-  for(std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
+  for (std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
       i!=_all_side_user_objects.end();
       ++i)
     (*i)->initialSetup();
 
-  for(std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
+  for (std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
       i!=_all_internal_side_user_objects.end();
       ++i)
     (*i)->initialSetup();
 
-  for(std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
+  for (std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
       i!=_all_generic_user_objects.end();
       ++i)
     (*i)->initialSetup();
@@ -147,27 +149,27 @@ UserObjectWarehouse::initialSetup()
 void
 UserObjectWarehouse::timestepSetup()
 {
-  for(std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
+  for (std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
       i!=_all_element_user_objects.end();
       ++i)
     (*i)->timestepSetup();
 
-  for(std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
+  for (std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
       i!=_all_nodal_user_objects.end();
       ++i)
     (*i)->timestepSetup();
 
-  for(std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
+  for (std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
       i!=_all_side_user_objects.end();
       ++i)
     (*i)->timestepSetup();
 
-  for(std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
+  for (std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
       i!=_all_internal_side_user_objects.end();
       ++i)
     (*i)->timestepSetup();
 
-  for(std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
+  for (std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
       i!=_all_generic_user_objects.end();
       ++i)
     (*i)->timestepSetup();
@@ -176,27 +178,27 @@ UserObjectWarehouse::timestepSetup()
 void
 UserObjectWarehouse::residualSetup()
 {
-  for(std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
+  for (std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
       i!=_all_element_user_objects.end();
       ++i)
     (*i)->residualSetup();
 
-  for(std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
+  for (std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
       i!=_all_nodal_user_objects.end();
       ++i)
     (*i)->residualSetup();
 
-  for(std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
+  for (std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
       i!=_all_side_user_objects.end();
       ++i)
     (*i)->residualSetup();
 
-  for(std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
+  for (std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
       i!=_all_internal_side_user_objects.end();
       ++i)
     (*i)->residualSetup();
 
-  for(std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
+  for (std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
       i!=_all_generic_user_objects.end();
       ++i)
     (*i)->residualSetup();
@@ -205,27 +207,27 @@ UserObjectWarehouse::residualSetup()
 void
 UserObjectWarehouse::jacobianSetup()
 {
-  for(std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
+  for (std::vector<ElementUserObject *>::const_iterator i=_all_element_user_objects.begin();
       i!=_all_element_user_objects.end();
       ++i)
     (*i)->jacobianSetup();
 
-  for(std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
+  for (std::vector<NodalUserObject *>::const_iterator i=_all_nodal_user_objects.begin();
       i!=_all_nodal_user_objects.end();
       ++i)
     (*i)->jacobianSetup();
 
-  for(std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
+  for (std::vector<SideUserObject *>::const_iterator i=_all_side_user_objects.begin();
       i!=_all_side_user_objects.end();
       ++i)
     (*i)->jacobianSetup();
 
-  for(std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
+  for (std::vector<InternalSideUserObject *>::const_iterator i=_all_internal_side_user_objects.begin();
       i!=_all_internal_side_user_objects.end();
       ++i)
     (*i)->jacobianSetup();
 
-  for(std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
+  for (std::vector<GeneralUserObject *>::const_iterator i=_all_generic_user_objects.begin();
       i!=_all_generic_user_objects.end();
       ++i)
     (*i)->jacobianSetup();
@@ -334,7 +336,7 @@ UserObjectWarehouse::addUserObject(UserObject *user_object)
 const std::vector<ElementUserObject *> &
 UserObjectWarehouse::elementUserObjects(SubdomainID block_id, GROUP group)
 {
-  switch(group)
+  switch (group)
   {
   case ALL:
     return _block_element_user_objects[block_id];
@@ -350,7 +352,7 @@ UserObjectWarehouse::elementUserObjects(SubdomainID block_id, GROUP group)
 const std::vector<SideUserObject *> &
 UserObjectWarehouse::sideUserObjects(BoundaryID boundary_id, GROUP group)
 {
-  switch(group)
+  switch (group)
   {
   case ALL:
     return _boundary_side_user_objects[boundary_id];
@@ -383,7 +385,7 @@ UserObjectWarehouse::internalSideUserObjects(SubdomainID block_id, GROUP group)
 const std::vector<NodalUserObject *> &
 UserObjectWarehouse::nodalUserObjects(BoundaryID boundary_id, GROUP group)
 {
-  switch(group)
+  switch (group)
   {
   case ALL:
     return _boundary_nodal_user_objects[boundary_id];
@@ -399,7 +401,7 @@ UserObjectWarehouse::nodalUserObjects(BoundaryID boundary_id, GROUP group)
 const std::vector<NodalUserObject *> &
 UserObjectWarehouse::blockNodalUserObjects(SubdomainID subdomain_id, GROUP group)
 {
-  switch(group)
+  switch (group)
   {
   case ALL:
     return _block_nodal_user_objects[subdomain_id];
@@ -415,7 +417,7 @@ UserObjectWarehouse::blockNodalUserObjects(SubdomainID subdomain_id, GROUP group
 const std::vector<GeneralUserObject *> &
 UserObjectWarehouse::genericUserObjects(GROUP group)
 {
-  switch(group)
+  switch (group)
   {
   case ALL:
     return _all_generic_user_objects;
@@ -425,5 +427,26 @@ UserObjectWarehouse::genericUserObjects(GROUP group)
     return _post_generic_user_objects;
   default:
     mooseError("Bad value for Enum GROUP, must be ALL, PRE_AUX, or POST_AUX");
+  }
+}
+
+template<typename T>
+void
+UserObjectWarehouse::sortUserObjects(std::vector<T *> & uo_vector)
+{
+  try
+  {
+    // Sort based on dependencies
+    DependencyResolverInterface::sort(uo_vector.begin(), uo_vector.end());
+  }
+  catch(CyclicDependencyException<DependencyResolverInterface *> & e)
+  {
+    std::ostringstream oss;
+
+    oss << "Cyclic dependency detected in UserObject ordering:\n";
+    const std::multimap<DependencyResolverInterface *, DependencyResolverInterface *> & depends = e.getCyclicDependencies();
+    for (std::multimap<DependencyResolverInterface *, DependencyResolverInterface *>::const_iterator it = depends.begin(); it != depends.end(); ++it)
+      oss << (static_cast<T *>(it->first))->name() << " -> " << (static_cast<T *>(it->second))->name() << "\n";
+    mooseError(oss.str());
   }
 }

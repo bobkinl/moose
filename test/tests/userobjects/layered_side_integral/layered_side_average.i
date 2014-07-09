@@ -47,7 +47,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./lsia]
     type = SpatialUserObjectAux
     variable = layered_side_average
@@ -74,5 +74,4 @@
 [Outputs]
   output_initial = true
   exodus = true
-  console = true
 []

@@ -31,6 +31,7 @@
 
 [AuxKernels]
   # Intentionally out of order to test sorting capabiilties
+  active = 'one two'
   [./two]
     variable = two
     type = CoupledAux
@@ -44,6 +45,14 @@
     type = ConstantAux
     value = 1
   [../]
+
+  [./five]
+    type = ConstantAux
+    variable = five
+    boundary = '1 2'
+    value = 5
+  [../]
+
 []
 
 [BCs]
@@ -64,17 +73,6 @@
   [../]
 []
 
-[AuxBCs]
-  active = ''
-
-  [./five]
-    type = ConstantAux
-    variable = five
-    boundary = '1 2'
-    value = 5
-  [../]
-[]
-
 [Executioner]
   type = Steady
 
@@ -83,8 +81,7 @@
 []
 
 [Outputs]
-  console = true
-  [./exodus]
+  [./out]
     type = Exodus
     elemental_as_nodal = true
     output_initial = true

@@ -18,8 +18,7 @@
 // local includes
 #include "MooseArray.h"
 #include "Indicator.h"
-#include "TwoMaterialPropertyInterface.h"
-#include "Coupleable.h"
+#include "NeighborCoupleable.h"
 #include "ScalarCoupleable.h"
 #include "MooseVariableInterface.h"
 #include "MooseVariableDependencyInterface.h"
@@ -46,8 +45,7 @@ class InternalSideIndicator :
   public Indicator,
   public NeighborCoupleable,
   public ScalarCoupleable,
-  public NeighborMooseVariableInterface,
-  protected TwoMaterialPropertyInterface
+  public NeighborMooseVariableInterface
 {
 public:
 

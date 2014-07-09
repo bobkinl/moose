@@ -40,8 +40,8 @@
 [Executioner]
   # Preconditioned JFNK (default)
   type = Transient
-  restart_file_base = kernel_restartable_out_cp/0005
-  num_steps = 10
+  restart_file_base = kernel_restartable_restart_cp/0005
+  num_steps = 5
   dt = 1e-2
   solve_type = PJFNK
   petsc_options_iname = '-pc_type -pc_hypre_type'
@@ -55,9 +55,5 @@
     type = Console
     perf_log = true
     linear_residuals = true
-  [../]
-  [./checkpoint]
-    type = Checkpoint
-    num_files = 100
   [../]
 []

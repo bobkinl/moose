@@ -49,12 +49,11 @@ NodalFloodCountAux::NodalFloodCountAux(const std::string & name, InputParameters
 Real
 NodalFloodCountAux::computeValue()
 {
-  switch(_field_display)
+  switch (_field_display)
   {
   case 0:  // UNIQUE_REGION
   case 1:  // VARIABLE_COLORING
     return _flood_counter.getNodalValue(_current_node->id(), _var_idx, _var_coloring);
-    break;
   case 2:  // ACTIVE_BOUNDS
     if (isNodal())
       return _flood_counter.getNodalValues(_current_node->id()).size();
@@ -63,14 +62,12 @@ NodalFloodCountAux::computeValue()
       size_t size=0;
       std::vector<std::vector<std::pair<unsigned int, unsigned int> > > values = _flood_counter.getElementalValues(_current_elem->id());
 
-      for (unsigned int i=0; i<values.size(); ++i)
+      for (unsigned int i = 0; i < values.size(); ++i)
         size += values[i].size();
       return size;
     }
-    break;
   case 3:  // CENTROID
     return _flood_counter.getElementalValue(_current_elem->id());
-    break;
   }
 
   return 0;

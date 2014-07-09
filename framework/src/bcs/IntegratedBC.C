@@ -36,7 +36,7 @@ IntegratedBC::IntegratedBC(const std::string & name, InputParameters parameters)
     BoundaryCondition(name, parameters),
     RandomInterface(name, parameters, _fe_problem, _tid, false),
     CoupleableMooseVariableDependencyIntermediateInterface(parameters, false),
-    MaterialPropertyInterface(parameters),
+    MaterialPropertyInterface(name, parameters),
     _current_elem(_assembly.elem()),
     _current_elem_volume(_assembly.elemVolume()),
     _current_side(_assembly.side()),
@@ -65,7 +65,7 @@ IntegratedBC::IntegratedBC(const std::string & name, InputParameters parameters)
   _save_in.resize(_save_in_strings.size());
   _diag_save_in.resize(_diag_save_in_strings.size());
 
-  for(unsigned int i=0; i<_save_in_strings.size(); i++)
+  for (unsigned int i=0; i<_save_in_strings.size(); i++)
   {
     MooseVariable * var = &_subproblem.getVariable(_tid, _save_in_strings[i]);
 
@@ -79,7 +79,7 @@ IntegratedBC::IntegratedBC(const std::string & name, InputParameters parameters)
 
   _has_save_in = _save_in.size() > 0;
 
-  for(unsigned int i=0; i<_diag_save_in_strings.size(); i++)
+  for (unsigned int i=0; i<_diag_save_in_strings.size(); i++)
   {
     MooseVariable * var = &_subproblem.getVariable(_tid, _diag_save_in_strings[i]);
 
@@ -101,7 +101,7 @@ IntegratedBC::~IntegratedBC()
 void
 IntegratedBC::computeResidual()
 {
-  DenseVector<Number> & re = _assembly.residualBlock(_var.index());
+  DenseVector<Number> & re = _assembly.residualBlock(_var.number());
   _local_re.resize(re.size());
   _local_re.zero();
 
@@ -114,7 +114,7 @@ IntegratedBC::computeResidual()
   if (_has_save_in)
   {
     Threads::spin_mutex::scoped_lock lock(Threads::spin_mtx);
-    for(unsigned int i=0; i<_save_in.size(); i++)
+    for (unsigned int i=0; i<_save_in.size(); i++)
       _save_in[i]->sys().solution().add_vector(_local_re, _save_in[i]->dofIndices());
   }
 }
@@ -122,7 +122,7 @@ IntegratedBC::computeResidual()
 void
 IntegratedBC::computeJacobian()
 {
-  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), _var.index());
+  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), _var.number());
   _local_ke.resize(ke.m(), ke.n());
   _local_ke.zero();
 
@@ -137,11 +137,11 @@ IntegratedBC::computeJacobian()
   {
     unsigned int rows = ke.m();
     DenseVector<Number> diag(rows);
-    for(unsigned int i=0; i<rows; i++)
+    for (unsigned int i=0; i<rows; i++)
       diag(i) = _local_ke(i,i);
 
     Threads::spin_mutex::scoped_lock lock(Threads::spin_mtx);
-    for(unsigned int i=0; i<_diag_save_in.size(); i++)
+    for (unsigned int i=0; i<_diag_save_in.size(); i++)
       _diag_save_in[i]->sys().solution().add_vector(diag, _diag_save_in[i]->dofIndices());
   }
 }
@@ -151,13 +151,13 @@ IntegratedBC::computeJacobianBlock(unsigned int jvar)
 {
 //  Moose::perf_log.push("computeJacobianBlock()","IntegratedBC");
 
-  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), jvar);
+  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), jvar);
 
   for (_qp=0; _qp<_qrule->n_points(); _qp++)
     for (_i=0; _i<_test.size(); _i++)
       for (_j=0; _j<_phi.size(); _j++)
       {
-        if (_var.index() == jvar)
+        if (_var.number() == jvar)
           ke(_i,_j) += _JxW[_qp]*_coord[_qp]*computeQpJacobian();
         else
           ke(_i,_j) += _JxW[_qp]*_coord[_qp]*computeQpOffDiagJacobian(jvar);
@@ -169,7 +169,7 @@ IntegratedBC::computeJacobianBlock(unsigned int jvar)
 void
 IntegratedBC::computeJacobianBlockScalar(unsigned int jvar)
 {
-  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), jvar);
+  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), jvar);
 
   MooseVariableScalar & jv = _sys.getScalarVariable(_tid, jvar);
   for (_qp = 0; _qp < _qrule->n_points(); _qp++)

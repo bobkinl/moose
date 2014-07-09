@@ -2,15 +2,16 @@
 
 #include "Nonlinear3D.h"
 
-namespace Elk
-{
 namespace SolidMechanics
 {
 
 
-Element::Element( const std::string & name,
+Element::Element( SolidModel & solid_model,
+                  const std::string & /*name*/,
                   InputParameters parameters ) :
-  Material(name+"_Element", parameters)
+  Coupleable(parameters, false),
+  ZeroInterface(parameters),
+  _solid_model( solid_model )
 {
 }
 
@@ -194,7 +195,7 @@ Element::polarDecompositionEigen( const ColumnMajorMatrix & Fhat, ColumnMajorMat
 
   Chat.eigen(eigen_value,eigen_vector);
 
-  for(int i = 0; i < ND; i++)
+  for (int i = 0; i < ND; i++)
   {
     N1(i) = eigen_vector(i,0);
     N2(i) = eigen_vector(i,1);
@@ -237,4 +238,3 @@ Element::fillMatrix( unsigned int qp,
 
 
 } // namespace solid_mechanics
-} // namespace elk

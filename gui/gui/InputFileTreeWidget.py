@@ -8,6 +8,7 @@ try:
 except ImportError:
     try:
         from PySide import QtCore, QtGui
+        QtCore.QString = str
     except ImportError:
         raise ImportError("Cannot load either PyQt or PySide")
 
@@ -58,7 +59,6 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
     QtCore.QObject.connect(self,
                            QtCore.SIGNAL("currentItemChanged(QTreeWidgetItem*, QTreeWidgetItem*)"),
                            self._currentItemChanged)
-
 
   def addHardPathsToTree(self):
     # Add every hard path
@@ -124,7 +124,7 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
       return None
 
   def getOutputItemData(self):
-    output_item = self.findChildItemWithName(self, 'Output')
+    output_item = self.findChildItemWithName(self, 'Outputs')
     data = None
     try:
       return output_item.table_data
@@ -133,74 +133,68 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
 
     return None
 
-  def getOutputFileNames(self):
+  ##
+  # Initialize the list of output file and block names (private)
+  # This function initializes self._output_file_names and self._output_block_names
+  def getOutputFileAndBlockNames(self):
 
-    output_item = self.findChildItemWithName(self, 'Output')
-    oversampling_item = self.findChildItemWithName(output_item, 'OverSampling')
-
-    file_names = []
-    file_base = ''
-    output_data = None
+    # Storage for file_base as a common parameter
+    common_file_base = ''
+    output_file_names = []
+    output_block_names = []
 
     # Find the Outputs block items and the names of the sub-blocks
     outputs = self.findChildItemWithName(self, 'Outputs')
     outputs_children = self.getChildNames(outputs)
 
-    # Loop through each of the sub-blocks and grab the data
-    # if type = Exodus
-    for i in range(len(outputs_children)-1, 0, -1):
-      child = self.findChildItemWithName(outputs, outputs_children[i])
-      output_data = child.table_data
-      if output_data['type'] == 'Exodus':
+    # Check for short-cut syntax (i.e., exodus = true)
+    # Make sure that the node has table_data before going on...not all do!
+    if hasattr(outputs, 'table_data'):
+      output_data = outputs.table_data
 
-        # Check for oversampling
-        if 'oversample' in output_data and output_data['oversample'] != '0':
-          if 'oversample_file_base' in output_data:
-            file_base = output_data['oversample_file_base']
-          else:
-            file_base = 'peacock_run_tmp_out_oversample'
+      if 'file_base' in output_data:
+        common_file_base = output_data['file_base']
+      else:
+        common_file_base = 'peacock_run_tmp'
 
-        # Non-oversampled base file name
+      # Check for short-cut syntax (i.e., exodus = true)
+      if outputs.table_data and 'exodus' in outputs.table_data and outputs.table_data['exodus'] == 'true':
+        if common_file_base == 'peacock_run_tmp':
+          output_file_names.append(common_file_base + '_out.e')
         else:
-          if 'file_base' in output_data:
+          output_file_names.append(common_file_base + '.e')
+        output_block_names.append('exodus')
+
+      # Loop through each of the sub-blocks and grab the data, if type = Exodus
+      for item in outputs_children:
+
+        # Extract the data for the sub-block
+        child = self.findChildItemWithName(outputs, item)
+        output_data = child.table_data
+
+        # If the object is active (checked), it contains output_data, and is of type = Exodus, then extract the filename
+        if child.checkState(0) > 0 and ('type' in output_data) and (output_data['type'] == 'Exodus'):
+          file_base = common_file_base + "_" + output_data['Name']
+
+          # Check for file_base
+          if ('file_base' in output_data) and (output_data['file_base'] != ''):
             file_base = output_data['file_base']
-          else:
-            file_base = 'peacock_run_tmp_out'
 
-        file_names.append(file_base + '.e')
-        break
+          # Check for oversampling and appending of '_oversample'
+          if ('oversample' in output_data) and (output_data['oversample'] != '0') and ('append_oversample' in output_data) and (output_data['oversample'] != '0'):
+            file_base = file_base + '_oversample'
 
-    # Use the old system, if output_data is None
-    if output_data == None:
-      if oversampling_item and oversampling_item.checkState(0) == QtCore.Qt.Checked:
-        output_data =  output_item.table_data
-
-        if output_data:
-          if 'file_base' in output_data:
-            file_base = output_data['file_base'] + '_oversample'
-          else:
-            file_base = 'peacock_run_tmp_out_oversample'
-
-      elif output_item.checkState(0) == QtCore.Qt.Checked:
-        output_data =  output_item.table_data
-
-        if output_data:
-          if 'file_base' in output_data:
-            file_base = output_data['file_base']
-          else:
-            file_base = 'peacock_run_tmp_out'
-
-      type_to_extension = {'exodus':'.e', 'tecplot':'.plt'}
-
-      for atype,extension in type_to_extension.items():
-        if output_data and atype in output_data and (output_data[atype] == 'true' or output_data[atype] == '1'):
-          file_names.append(file_base + extension)
+          # Append the file_base and object name to the lists
+          output_file_names.append(file_base + '.e')
+          output_block_names.append(output_data['Name'])
 
     # FIXME: Hack to make raven and r7 work for now
     if 'raven' in self.input_file_widget.app_path or 'r7' in self.input_file_widget.app_path:
-      file_names = [file_base + '_displaced.e']
+      output_file_names = [common_file_base + '_displaced.e']
+      output_block_names = ['']
 
-    return file_names
+    # Return the list of file and block names
+    return [output_file_names, output_block_names]
 
   def _itemHasEditableParameters(self, item):
     this_path = self.generatePathFromItem(item)
@@ -325,6 +319,9 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
           self._recursivelyAddTreeItems(split_path[1:], child)
 
   def getChildNames(self, parent):
+    if not parent:
+      return []
+
     try: # This will fail when we're dealing with the QTreeWidget itself
       num_children = parent.childCount()
     except:
@@ -380,7 +377,10 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
 
       parent_path = ''
 
+      this_path_is_hard = False
+
       if self.action_syntax.isPath(this_path):
+        this_path_is_hard = True
         this_path = '/' + self.action_syntax.getPath(this_path) # Get the real action path associated with this item
         parent_path = this_path
       else:
@@ -395,7 +395,12 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
       if global_params_item and 'GlobalParams' not in this_path:
         global_params = global_params_item.table_data
 
-      new_gui = OptionsGUI(yaml_entry, self.action_syntax, item.text(column), item.table_data, item.param_comments, item.comment, False, self.application.typeOptions(), global_params)
+      # Hack!
+      if 'Outputs' in this_path:
+        new_gui = OptionsGUI(yaml_entry, self.action_syntax, item.text(column), item.table_data, item.param_comments, item.comment, False, self.application.typeOptions(), global_params, this_path_is_hard)
+      else:
+        new_gui = OptionsGUI(yaml_entry, self.action_syntax, item.text(column), item.table_data, item.param_comments, item.comment, False, self.application.typeOptions(), global_params, False)
+
 
       if item.table_data:
         new_gui.incoming_data = item.table_data
@@ -445,7 +450,7 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
     if global_params_item:
       global_params = global_params_item.table_data
 
-    self.new_gui = OptionsGUI(yaml_entry, self.action_syntax, item.text(0), None, None, None, False, self.application.typeOptions(), global_params)
+    self.new_gui = OptionsGUI(yaml_entry, self.action_syntax, item.text(0), None, None, None, False, self.application.typeOptions(), global_params, False)
     if self.new_gui.exec_():
       table_data = self.new_gui.result()
       param_comments = self.new_gui.param_table.param_comments
@@ -495,6 +500,12 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
     self.tree_changed.emit()
     self.input_file_widget.input_file_textbox.updateTextBox()
 
+    # Update the output selection box (TODO: This only needs to run when [Outputs] is changed)
+    if hasattr(self.application.main_window, "visualize_widget"):
+      self._output_file_names = []
+      self._output_block_names = []
+      self.application.main_window.visualize_widget.updateOutputControl()
+
   def _currentItemChanged(self, current, previous):
     if not current:
       return
@@ -506,8 +517,5 @@ class InputFileTreeWidget(QtGui.QTreeWidget):
         self.input_file_widget.mesh_render_widget.highlightBoundary(current.table_data['master']+' '+current.table_data['slave'])
     elif 'block' in current.table_data:
       self.input_file_widget.mesh_render_widget.highlightBlock(current.table_data['block'])
-    elif previous and ('boundary' in previous.table_data or 'block' in previous.table_data or ('master' in previous.table_data and 'slave' in previous.table_data)):
+    elif previous and hasattr(previous, 'table_data') and ('boundary' in previous.table_data or 'block' in previous.table_data or ('master' in previous.table_data and 'slave' in previous.table_data)):
       self.input_file_widget.mesh_render_widget.clearHighlight()
-#    except:
-#      pass
-

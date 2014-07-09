@@ -3,15 +3,13 @@
 
 #include "Element.h"
 
-namespace Elk
-{
 namespace SolidMechanics
 {
 
 class PlaneStrain : public Element
 {
 public:
-  PlaneStrain(const std::string & name, InputParameters parameters);
+  PlaneStrain(SolidModel & solid_model, const std::string & name, InputParameters parameters);
   virtual ~PlaneStrain();
 
 protected:
@@ -36,7 +34,6 @@ protected:
 
 };
 
-}
 }
 
 #endif //SOLIDMECHANICSMATERIALRZ_H

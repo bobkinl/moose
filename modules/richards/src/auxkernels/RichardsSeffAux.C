@@ -22,20 +22,15 @@ RichardsSeffAux::RichardsSeffAux(const std::string & name, InputParameters param
   _seff_UO(getUserObject<RichardsSeff>("seff_UO"))
 {
   int n = coupledComponents("pressure_vars");
-  _pressure_vars.resize(n);
   _pressure_vals.resize(n);
 
   for (int i=0 ; i<n; ++i)
-    {
-      _pressure_vars[i] = coupled("pressure_vars", i);
-      _pressure_vals[i] = &coupledValue("pressure_vars", i);
-    }
+    _pressure_vals[i] = &coupledValue("pressure_vars", i);
 }
 
 
 Real
 RichardsSeffAux::computeValue()
 {
-  //Moose::out << "aux value " << _seff_UO.seff(_pressure_vals, _qp) << "\n";
   return _seff_UO.seff(_pressure_vals, _qp);
 }

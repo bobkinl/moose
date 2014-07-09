@@ -15,7 +15,6 @@
 #include "Transient.h"
 
 //Moose includes
-#include "Kernel.h"
 #include "Factory.h"
 #include "SubProblem.h"
 #include "TimePeriod.h"
@@ -54,7 +53,6 @@ InputParameters validParams<Transient>()
   params.addParam<bool>("trans_ss_check",  false,  "Whether or not to check for steady state conditions");
   params.addParam<Real>("ss_check_tol",    1.0e-08,"Whenever the relative residual changes by less than this the solution will be considered to be at steady state.");
   params.addParam<Real>("ss_tmin",         0.0,    "Minimum number of timesteps to take before checking for steady state conditions.");
-  params.addParam<std::vector<Real> >("sync_times", sync_times, "A list of times that will be solved for provided they are within the simulation time");
   params.addParam<Real>("predictor_scale", "The scale factor for the predictor (can range from 0 to 1)");
 
   params.addParam<std::vector<std::string> >("time_periods", "The names of periods");
@@ -66,9 +64,16 @@ InputParameters validParams<Transient>()
 
   params.addParam<bool>("use_multiapp_dt", false, "If true then the dt for the simulation will be chosen by the MultiApps.  If false (the default) then the minimum over the master dt and the MultiApps is used");
 
+  params.addParam<unsigned int>("picard_max_its", 1, "Number of times each timestep will be solved.  Mainly used when wanting to do Picard iterations with MultiApps that are set to execute_on timestep or timestep_begin");
+  params.addParam<Real>("picard_rel_tol", 1e-8, "The relative nonlinear residual drop to shoot for during Picard iterations.  This check is performed based on the Master app's nonlinear residual.");
+  params.addParam<Real>("picard_abs_tol", 1e-50, "The absolute nonlinear residual to shoot for during Picard iterations.  This check is performed based on the Master app's nonlinear residual.");
+
   params.addParamNamesToGroup("start_time dtmin dtmax n_startup_steps trans_ss_check ss_check_tol ss_tmin sync_times time_t time_dt growth_factor predictor_scale use_AB2 use_littlef abort_on_solve_fail output_to_file file_name estimate_time_error timestep_tolerance use_multiapp_dt", "Advanced");
 
   params.addParamNamesToGroup("time_periods time_period_starts time_period_ends", "Time Periods");
+
+  params.addParamNamesToGroup("picard_max_its picard_rel_tol picard_abs_tol", "Picard");
+
   params.addParam<bool>("verbose", false, "Print detailed diagnostics on timestep calculation");
 
   return params;
@@ -86,7 +91,7 @@ Transient::Transient(const std::string & name, InputParameters parameters) :
     _dt_old(_problem.dtOld()),
     _unconstrained_dt(declareRestartableData<Real>("unconstrained_dt", -1)),
     _at_sync_point(declareRestartableData<bool>("at_sync_point", false)),
-    _first(declareRestartableData<bool>("first", true)),
+    _first(declareRecoverableData<bool>("first", true)),
     _last_solve_converged(declareRestartableData<bool>("last_solve_converged", true)),
     _end_time(getParam<Real>("end_time")),
     _dtmin(getParam<Real>("dtmin")),
@@ -105,14 +110,18 @@ Transient::Transient(const std::string & name, InputParameters parameters) :
     _timestep_tolerance(getParam<Real>("timestep_tolerance")),
     _target_time(declareRestartableData<Real>("target_time", -1)),
     _use_multiapp_dt(getParam<bool>("use_multiapp_dt")),
-    _allow_output(true),
+    _picard_it(0),
+    _picard_max_its(getParam<unsigned int>("picard_max_its")),
+    _picard_converged(false),
+    _picard_initial_norm(0.0),
+    _picard_rel_tol(getParam<Real>("picard_rel_tol")),
+    _picard_abs_tol(getParam<Real>("picard_abs_tol")),
     _verbose(getParam<bool>("verbose"))
 {
   _problem.getNonlinearSystem().setDecomposition(_splitting);
   _t_step = 0;
   _dt = 0;
   _next_interval_output_time = 0.0;
-
 
   // Either a start_time has been forced on us, or we want to tell the App about what our start time is (in case anyone else is interested.
   if (_app.hasStartTime())
@@ -134,10 +143,10 @@ Transient::Transient(const std::string & name, InputParameters parameters) :
       params.set<Real>("scale") = predscale;
       _problem.addPredictor("SimplePredictor", "predictor", params);
     }
+
     else
-    {
       mooseError("Input value for predictor_scale = "<< predscale << ", outside of permissible range (0 to 1)");
-    }
+
   }
 
   if (!_restart_file_base.empty())
@@ -178,37 +187,34 @@ Transient::init()
   _problem.initialSetup();
   _time_stepper->init();
 
+  if (_app.isRestarting())
+    _time_old = _time;
+
   Moose::setup_perf_log.push("Output Initial Condition","Setup");
-
   _output_warehouse.outputInitial();
-
-  if (_output_initial)
-  {
-    _problem.output();
-    _problem.outputPostprocessors();
-    _problem.outputRestart();
-  }
   Moose::setup_perf_log.pop("Output Initial Condition","Setup");
 
   // If this is the first step
   if (_t_step == 0)
     _t_step = 1;
 
-  if (_t_step > 1) //Restart case
-  {
+  if (_t_step > 1) //Recover case
     _dt_old = _dt;
-  }
+
   else
   {
     computeDT();
 //  _dt = computeConstrainedDT();
     _dt = getDT();
   }
+
+
 }
 
 void
 Transient::execute()
 {
+
   preExecute();
 
   // NOTE: if you remove this line, you will see a subset of tests failing. Those tests might have a wrong answer and might need to be regolded.
@@ -216,7 +222,7 @@ Transient::execute()
   // is to maintain backward compatibility and so that MOOSE is giving the same answer.  However, we might remove this call and regold the test
   // in the future eventually.
   if (!_app.isRecovering())
-    _problem.copyOldSolutions();
+    _problem.advanceState();
 
   // Start time loop...
   while (true)
@@ -233,7 +239,9 @@ Transient::execute()
     }
 
     computeDT();
+
     takeStep();
+
     endStep();
 
     _steps_taken++;
@@ -258,10 +266,11 @@ Transient::incrementStepOrReject()
     if (_problem.adaptivity().isOn())
       _problem.adaptMesh();
 #endif
-    _time_old = _time;
+
+    _time_old = _time; // = _time_old + _dt;
     _t_step++;
 
-    _problem.copyOldSolutions();
+    _problem.advanceState();
   }
   else
   {
@@ -270,13 +279,24 @@ Transient::incrementStepOrReject()
   }
 
   _first = false;
+
 }
 
 void
 Transient::takeStep(Real input_dt)
 {
-  _problem.out().setOutput(false);
+  for (_picard_it=0; _picard_it<_picard_max_its && _picard_converged==false; _picard_it++)
+  {
+    if (_picard_max_its > 1)
+      _console << "Beginning Picard Iteration " << _picard_it << "\n" << std::endl;
 
+    solveStep(input_dt);
+  }
+}
+
+void
+Transient::solveStep(Real input_dt)
+{
   _dt_old = _dt;
 
   if (input_dt == -1.0)
@@ -284,70 +304,15 @@ Transient::takeStep(Real input_dt)
   else
     _dt = input_dt;
 
+  Real current_dt = _dt;
+
   _problem.onTimestepBegin();
-  if (lastSolveConverged())
-    _problem.updateMaterials();             // Update backward material data structures
 
   // Increment time
   _time = _time_old + _dt;
 
   _problem.execTransfers(EXEC_TIMESTEP_BEGIN);
-  _problem.execMultiApps(EXEC_TIMESTEP_BEGIN);
-
-  // Only print this if the 'Output' block exists
-  /// \todo{Remove when old output system is removed}
-  if (_app.hasLegacyOutput())
-  {
-    Moose::out << "\nTime Step ";
-    {
-      std::ostringstream out;
-
-      out << std::setw(2)
-          << _t_step
-          << ", time = "
-          << std::setw(9)
-          << std::setprecision(6)
-          << std::setfill('0')
-          << std::showpoint
-          << std::left
-          << _time;
-      Moose::out << out.str() << std::endl;
-    }
-
-    {
-      std::ostringstream tstepstr;
-      tstepstr << _t_step;
-      unsigned int tsteplen = tstepstr.str().size();
-      if (tsteplen < 2)
-        tsteplen = 2;
-
-      std::ostringstream out;
-
-      if (_verbose)
-      {
-        out << std::setw(tsteplen)
-            << "          old time = "
-            << std::setw(9)
-            << std::setprecision(6)
-            << std::setfill('0')
-            << std::showpoint
-            << std::left
-            << _time_old
-            << std::endl;
-      }
-
-      out << std::setw(tsteplen)
-          <<"                dt = "
-          << std::setw(9)
-          << std::setprecision(6)
-          << std::setfill('0')
-          << std::showpoint
-          << std::left
-          << _dt;
-
-      Moose::out << out.str() << std::endl;
-    }
-  }
+  _problem.execMultiApps(EXEC_TIMESTEP_BEGIN, _picard_max_its == 1);
 
   preSolve();
   _time_stepper->preSolve();
@@ -363,12 +328,35 @@ Transient::takeStep(Real input_dt)
   // Compute Post-Aux User Objects (Timestep begin)
   _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::POST_AUX);
 
+
+  if (_picard_max_its > 1)
+  {
+    Real current_norm = _problem.computeResidualL2Norm();
+    if (_picard_it == 0) // First Picard iteration - need to save off the initial nonlinear residual
+    {
+      _picard_initial_norm = current_norm;
+      _console << "Initial Picard Norm: " << _picard_initial_norm << '\n';
+    }
+    else
+      _console << "Current Picard Norm: " << current_norm << '\n';
+
+    Real relative_drop = current_norm / _picard_initial_norm;
+
+    if (current_norm < _picard_abs_tol || relative_drop < _picard_rel_tol)
+    {
+      _console << "Picard converged!" << std::endl;
+
+      _picard_converged = true;
+      return;
+    }
+  }
+
   _time_stepper->step();
 
   // We know whether or not the nonlinear solver thinks it converged, but we need to see if the executioner concurs
   if (lastSolveConverged())
   {
-    Moose::out << "Solve Converged!" << std::endl;
+    _console << " Solve Converged!" << std::endl;
 
     _time_stepper->acceptStep();
 
@@ -378,9 +366,7 @@ Transient::takeStep(Real input_dt)
 #if 0
     // User definable callback
     if (_estimate_error)
-    {
       estimateTimeError();
-    }
 #endif
 
     _problem.onTimestepEnd();
@@ -388,11 +374,11 @@ Transient::takeStep(Real input_dt)
     _problem.computeAuxiliaryKernels(EXEC_TIMESTEP);
     _problem.computeUserObjects(EXEC_TIMESTEP, UserObjectWarehouse::POST_AUX);
     _problem.execTransfers(EXEC_TIMESTEP);
-    _problem.execMultiApps(EXEC_TIMESTEP);
+    _problem.execMultiApps(EXEC_TIMESTEP, _picard_max_its == 1);
   }
   else
   {
-    Moose::out << "Solve Did NOT Converge!" << std::endl;
+    _console << " Solve Did NOT Converge!" << std::endl;
 
     // Perform the output of the current, failed time step (this only occurs if desired)
     _output_warehouse.outputFailedStep();
@@ -400,11 +386,20 @@ Transient::takeStep(Real input_dt)
 
   postSolve();
   _time_stepper->postSolve();
+  _dt = current_dt; // _dt might be smaller than this at this point for multistep methods
+  _time = _time_old;
 }
 
 void
-Transient::endStep()
+Transient::endStep(Real input_time)
 {
+  if (input_time == -1.0)
+    _time = _time_old + _dt;
+  else
+    _time = input_time;
+
+  _picard_converged=false;
+
   _last_solve_converged = lastSolveConverged();
 
   if (_last_solve_converged)
@@ -415,34 +410,20 @@ Transient::endStep()
     // Perform the output of the current time step
     _output_warehouse.outputStep();
 
+    // Output MultiApps if we were doing Picard iterations
+    if (_picard_max_its > 1)
+    {
+      _problem.advanceMultiApps(EXEC_TIMESTEP_BEGIN);
+      _problem.advanceMultiApps(EXEC_TIMESTEP);
+    }
+
     //output \todo{Remove after old output system is removed}
     if (_time_interval)
     {
-      //Force output if the current time is at an output interval
-      if (std::abs(_time-_next_interval_output_time)<=_timestep_tolerance
-         || (_problem.out().interval() > 1 && _t_step % _problem.out().interval() == 0))
-      {
-        if (_allow_output)
-        {
-          _problem.output(true);
-          _problem.outputPostprocessors(true);
-          _problem.outputRestart(true);
-        }
-      }
       //Set the time for the next output interval if we're at or beyond an output interval
       if (_time + _timestep_tolerance >= _next_interval_output_time)
       {
         _next_interval_output_time += _time_interval_output_interval;
-      }
-    }
-    else
-    {
-      // if _at_sync_point is true, force the output no matter what
-      if (_allow_output)
-      {
-        _problem.output(_at_sync_point);
-        _problem.outputPostprocessors(_at_sync_point);
-        _problem.outputRestart(_at_sync_point);
       }
     }
   }
@@ -462,9 +443,8 @@ Transient::computeConstrainedDT()
 
   //After startup steps, compute new dt
   if (_t_step > _n_startup_steps)
-  {
     dt_cur = getDT();
-  }
+
   else
   {
     diag << "Timestep < n_startup_steps, using old dt: "
@@ -483,7 +463,7 @@ Transient::computeConstrainedDT()
   _unconstrained_dt = dt_cur;
 
   if (_verbose)
-    Moose::out << diag.str();
+    _console << diag.str();
 
   diag.str("");
   diag.clear();
@@ -569,7 +549,7 @@ Transient::computeConstrainedDT()
   }
 
   if (_verbose)
-    Moose::out << diag.str();
+    _console << diag.str();
 
   return dt_cur;
 }
@@ -596,7 +576,7 @@ Transient::keepGoing()
     // Check current solution relative error norm against steady-state tolerance
     if (ss_relerr_norm < _ss_check_tol)
     {
-      Moose::out << "Steady-State Solution Achieved at time: " << _time << std::endl;
+      _console << "Steady-State Solution Achieved at time: " << _time << std::endl;
       //Output last solve if not output previously by forcing it
       keep_going = false;
     }
@@ -605,7 +585,7 @@ Transient::keepGoing()
       // Update solution norm for next time step
       _old_time_solution_norm = new_time_solution_norm;
       // Print steady-state relative error norm
-      Moose::out << "Steady-State Relative Differential Norm: " << ss_relerr_norm << std::endl;
+      _console << "Steady-State Relative Differential Norm: " << ss_relerr_norm << std::endl;
     }
   }
 
@@ -616,17 +596,9 @@ Transient::keepGoing()
   if ((_time>_end_time) || (fabs(_time-_end_time)<=_timestep_tolerance))
     keep_going = false;
 
-  if (!keep_going && _steps_taken && !_problem.out().wasOutput() && !_app.halfTransient())
-  {
-    _problem.output(true);
-    if (_allow_output)
-      _problem.outputPostprocessors(true);
-    _problem.outputRestart(true);
-  }
-
   if (!lastSolveConverged() && _abort)
   {
-    Moose::out << "Aborting as solve did not converge and input selected to abort" << std::endl;
+    _console << "Aborting as solve did not converge and input selected to abort" << std::endl;
     keep_going = false;
   }
 
@@ -647,12 +619,15 @@ Transient::lastSolveConverged()
 void
 Transient::preExecute()
 {
+  /*
   if (_problem.out().useTimeInterval())
   {
     _time_interval = true;
     _time_interval_output_interval = _problem.out().timeinterval();
     _next_interval_output_time = _time + _time_interval_output_interval;
   }
+  */
+
   // Add time period start times to sync times
   const std::vector<TimePeriod *> time_periods = _problem.getTimePeriods();
   for (unsigned int i = 0; i < time_periods.size(); ++i)
@@ -677,14 +652,6 @@ void
 Transient::setTargetTime(Real target_time)
 {
   _target_time = target_time;
-}
-
-void
-Transient::forceOutput()
-{
-  _problem.output(true);
-  _problem.outputPostprocessors(true);
-  _problem.outputRestart(true);
 }
 
 Real

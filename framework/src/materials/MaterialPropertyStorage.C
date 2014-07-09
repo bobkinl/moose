@@ -120,11 +120,11 @@ MaterialPropertyStorage::prolongStatefulProps(const std::vector<std::vector<QpMa
   else
   {
     children.resize(n_children);
-    for(unsigned int child=0; child < n_children; child++)
+    for (unsigned int child=0; child < n_children; child++)
       children[child] = child;
   }
 
-  for(unsigned int i=0; i < children.size(); i++)
+  for (unsigned int i=0; i < children.size(); i++)
   {
     unsigned int child = children[i];
 
@@ -151,7 +151,7 @@ MaterialPropertyStorage::prolongStatefulProps(const std::vector<std::vector<QpMa
         if (propsOlder()[child_elem][child_side][i] == NULL) propsOlder()[child_elem][child_side][i] = child_material_data.propsOlder()[ _stateful_prop_id_to_prop_id[i] ]->init(n_qpoints);
 
       // Copy from the parent stateful properties
-      for(unsigned int qp=0; qp<refinement_map[child].size(); qp++)
+      for (unsigned int qp=0; qp<refinement_map[child].size(); qp++)
       {
         PropertyValue * child_property = props()[child_elem][child_side][i];
         PropertyValue * parent_property = parent_material_props.props()[&elem][parent_side][i];
@@ -208,7 +208,7 @@ MaterialPropertyStorage::restrictStatefulProps(const std::vector<std::pair<unsig
   }
 
   // Copy from the child stateful properties
-  for(unsigned int qp=0; qp<coarsening_map.size(); qp++)
+  for (unsigned int qp=0; qp<coarsening_map.size(); qp++)
   {
     const std::pair<unsigned int, QpMap> & qp_pair = coarsening_map[qp];
     unsigned int child = qp_pair.first;
@@ -286,6 +286,37 @@ MaterialPropertyStorage::shift()
   else
   {
     std::swap(_props_elem, _props_elem_old);
+  }
+}
+
+void
+MaterialPropertyStorage::copy(MaterialData & material_data, const Elem & elem_to, const Elem & elem_from, unsigned int side, unsigned int n_qpoints)
+{
+  // WARNING: This is not capable of copying material data to/from elements on other processors.
+  //          It only works if both elem_to and elem_from are both on the local processor.
+  //          We can't currently check to ensure that they're on processor here because this isn't a ParallelObject.
+
+  if (props()[&elem_to][side].size() == 0) props()[&elem_to][side].resize(_stateful_prop_id_to_prop_id.size());
+  if (propsOld()[&elem_to][side].size() == 0) propsOld()[&elem_to][side].resize(_stateful_prop_id_to_prop_id.size());
+  if (hasOlderProperties())
+    if (propsOlder()[&elem_to][side].size() == 0) propsOlder()[&elem_to][side].resize(_stateful_prop_id_to_prop_id.size());
+  // init properties (allocate memory. etc)
+  for (unsigned int i=0; i < _stateful_prop_id_to_prop_id.size(); ++i)
+  {
+    // duplicate the stateful property in property storage (all three states - we will reuse the allocated memory there)
+    // also allocating the right amount of memory, so we do not have to resize, etc.
+    if (props()[&elem_to][side][i] == NULL) props()[&elem_to][side][i] = material_data.props()[ _stateful_prop_id_to_prop_id[i] ]->init(n_qpoints);
+    if (propsOld()[&elem_to][side][i] == NULL) propsOld()[&elem_to][side][i] = material_data.propsOld()[ _stateful_prop_id_to_prop_id[i] ]->init(n_qpoints);
+    if (hasOlderProperties())
+      if (propsOlder()[&elem_to][side][i] == NULL) propsOlder()[&elem_to][side][i] = material_data.propsOlder()[ _stateful_prop_id_to_prop_id[i] ]->init(n_qpoints);
+
+    for (unsigned int qp=0; qp<n_qpoints; ++qp)
+    {
+      props()[&elem_to][side][i]->qpCopy(qp, props()[&elem_from][side][i], qp);
+      propsOld()[&elem_to][side][i]->qpCopy(qp, propsOld()[&elem_from][side][i], qp);
+      if (hasOlderProperties())
+        propsOlder()[&elem_to][side][i]->qpCopy(qp, propsOlder()[&elem_from][side][i], qp);
+    }
   }
 }
 

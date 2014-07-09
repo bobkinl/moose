@@ -24,7 +24,8 @@
 #include "MaterialPropertyStorage.h"
 #include "PostprocessorWarehouse.h"
 #include "PostprocessorData.h"
-#include "Output.h"
+#include "VectorPostprocessorWarehouse.h"
+#include "VectorPostprocessorData.h"
 #include "Adaptivity.h"
 #include "Resurrector.h"
 #include "IndicatorWarehouse.h"
@@ -41,7 +42,7 @@
 #include "OutputWarehouse.h"
 
 class DisplacedProblem;
-class OutputProblem;
+
 class FEProblem;
 class MooseMesh;
 class NonlinearSystem;
@@ -124,6 +125,8 @@ public:
    */
   void setCouplingMatrix(CouplingMatrix * cm);
   CouplingMatrix * & couplingMatrix() { return _cm; }
+
+  bool areCoupled(unsigned int ivar, unsigned int jvar) { return (*_cm)(ivar, jvar); }
 
   std::vector<std::pair<MooseVariable *, MooseVariable *> > & couplingEntries(THREAD_ID tid) { return _assembly[tid]->couplingEntries(); }
 
@@ -214,13 +217,12 @@ public:
    */
   virtual void clearActiveElementalMooseVariables(THREAD_ID tid);
 
-  virtual void createQRules(QuadratureType type, Order order);
-  virtual Order getQuadratureOrder() { return _quadrature_order; }
+  virtual void createQRules(QuadratureType type, Order order, Order volume_order=INVALID_ORDER, Order face_order=INVALID_ORDER);
 
   /**
    * @return The maximum number of quadrature points in use on any element in this problem.
    */
-  unsigned int getMaxQps() { mooseAssert(_max_qps < std::numeric_limits<unsigned int>::max(), "Max QPS uninitialized"); return _max_qps; }
+  unsigned int getMaxQps() const;
 
   virtual Assembly & assembly(THREAD_ID tid) { return *_assembly[tid]; }
 
@@ -303,8 +305,12 @@ public:
   virtual void addPredictor(const std::string & type, const std::string & name, InputParameters parameters);
 
   virtual void copySolutionsBackwards();
-  // Update backward time solution vectors
-  virtual void copyOldSolutions();
+
+  /**
+   * Advance all of the state holding vectors / datastructures so that we can move to the next timestep.
+   */
+  virtual void advanceState();
+
   virtual void restoreSolutions();
 
   virtual const std::vector<MooseObject *> & getObjectsByName(const std::string & name, THREAD_ID tid);
@@ -329,7 +335,6 @@ public:
   void addAuxScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1.);
   void addAuxKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
   void addAuxScalarKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
-  void addAuxBoundaryCondition(const std::string & bc_name, const std::string & name, InputParameters parameters);
 
   AuxiliarySystem & getAuxiliarySystem() { return _aux; }
 
@@ -358,7 +363,6 @@ public:
   virtual const std::vector<Material*> & getFaceMaterials(SubdomainID block_id, THREAD_ID tid);
   virtual const std::vector<Material*> & getBndMaterials(BoundaryID block_id, THREAD_ID tid);
   virtual const std::vector<Material*> & getNeighborMaterials(SubdomainID block_id, THREAD_ID tid);
-  virtual void updateMaterials();
 
   /**
    * Add the MooseVariables that the current materials depend on to the dependency list.
@@ -367,10 +371,10 @@ public:
    */
   virtual void prepareMaterials(SubdomainID blk_id, THREAD_ID tid);
 
-  virtual void reinitMaterials(SubdomainID blk_id, THREAD_ID tid);
-  virtual void reinitMaterialsFace(SubdomainID blk_id, THREAD_ID tid);
-  virtual void reinitMaterialsNeighbor(SubdomainID blk_id, THREAD_ID tid);
-  virtual void reinitMaterialsBoundary(BoundaryID boundary_id, THREAD_ID tid);
+  virtual void reinitMaterials(SubdomainID blk_id, THREAD_ID tid, bool swap_stateful = true);
+  virtual void reinitMaterialsFace(SubdomainID blk_id, THREAD_ID tid, bool swap_stateful = true);
+  virtual void reinitMaterialsNeighbor(SubdomainID blk_id, THREAD_ID tid, bool swap_stateful = true);
+  virtual void reinitMaterialsBoundary(BoundaryID boundary_id, THREAD_ID tid, bool swap_stateful = true);
   /*
    * Swap back underlying data storing stateful material properties
    */
@@ -381,13 +385,14 @@ public:
   // Postprocessors /////
   virtual void addPostprocessor(std::string pp_name, const std::string & name, InputParameters parameters);
 
+  // VectorPostprocessors /////
+  virtual void addVectorPostprocessor(std::string pp_name, const std::string & name, InputParameters parameters);
+
   /**
    * Initializes the postprocessor data
    * @see SetupPostprocessorDataAction
    */
   void initPostprocessorData(const std::string & name);
-
-  void clearPostprocessorTables();
 
   // UserObjects /////
   virtual void addUserObject(std::string user_object_name, const std::string & name, InputParameters parameters);
@@ -400,11 +405,10 @@ public:
   template <class T>
   const T & getUserObject(const std::string & name)
   {
-    ExecFlagType types[] = { EXEC_TIMESTEP, EXEC_TIMESTEP_BEGIN, EXEC_INITIAL, EXEC_JACOBIAN, EXEC_RESIDUAL, EXEC_CUSTOM };
-    for (unsigned int i = 0; i < LENGTHOF(types); i++)
-      if (_user_objects(types[i])[0].hasUserObject(name))
+    for (unsigned int i = 0; i < Moose::exec_types.size(); ++i)
+      if (_user_objects(Moose::exec_types[i])[0].hasUserObject(name))
       {
-        UserObject * user_object = _user_objects(types[i])[0].getUserObjectByName(name);
+        UserObject * user_object = _user_objects(Moose::exec_types[i])[0].getUserObjectByName(name);
         return dynamic_cast<const T &>(*user_object);
       }
 
@@ -435,7 +439,7 @@ public:
   /**
    * Get a reference to the value associated with the postprocessor.
    */
-  Real & getPostprocessorValue(const PostprocessorName & name, THREAD_ID tid = 0);
+  PostprocessorValue & getPostprocessorValue(const PostprocessorName & name, THREAD_ID tid = 0);
 
   /**
    * Get the reference to the old value of a post-processor
@@ -443,16 +447,52 @@ public:
    * @param tid Thread ID
    * @return The reference to the old value
    */
-  Real & getPostprocessorValueOld(const std::string & name, THREAD_ID tid = 0);
+  PostprocessorValue & getPostprocessorValueOld(const std::string & name, THREAD_ID tid = 0);
 
   /**
    * Get a reference to the PostprocessorWarehouse ExecStore object
    */
   ExecStore<PostprocessorWarehouse> & getPostprocessorWarehouse();
 
+  /**
+   * Returns whether or not the current simulation has any multiapps
+   */
+  bool hasMultiApps() const { return _has_multiapps; }
+
+  /**
+   * Check existence of the VectorPostprocessor.
+   * @param name The name of the post-processor
+   * @return true if it exists, otherwise false
+   */
+  bool hasVectorPostprocessor(const std::string & name);
+
+  /**
+   * Get a reference to the value associated with the VectorPostprocessor.
+   */
+  VectorPostprocessorValue & getVectorPostprocessorValue(const VectorPostprocessorName & name, const std::string & vector_name);
+
+  /**
+   * Get the reference to the old value of a post-processor
+   * @param name The name of the post-processor
+   * @param tid Thread ID
+   * @return The reference to the old value
+   */
+  VectorPostprocessorValue & getVectorPostprocessorValueOld(const std::string & name, const std::string & vector_name);
+
+  /**
+   * Get the vectors for a specific VectorPostprocessor.
+   * @param vpp_name The name of the VectorPostprocessor
+   */
+  const std::map<std::string, VectorPostprocessorValue*> & getVectorPostprocessorVectors(const std::string & vpp_name);
+
+  /**
+   * Get a reference to the VectorPostprocessorWarehouse ExecStore object
+   */
+  ExecStore<VectorPostprocessorWarehouse> & getVectorPostprocessorWarehouse();
+
+
   virtual void computeUserObjects(ExecFlagType type = EXEC_TIMESTEP, UserObjectWarehouse::GROUP group = UserObjectWarehouse::ALL);
   virtual void computeAuxiliaryKernels(ExecFlagType type = EXEC_RESIDUAL);
-  virtual void outputPostprocessors(bool force = false);
 
   // Dampers /////
   void addDamper(std::string damper_name, const std::string & name, InputParameters parameters);
@@ -482,7 +522,12 @@ public:
   /**
    * Execute the MultiApps associated with the ExecFlagType
    */
-  void execMultiApps(ExecFlagType type);
+  void execMultiApps(ExecFlagType type, bool auto_advance = true);
+
+  /**
+   * Advance the MultiApps associated with the ExecFlagType
+   */
+  void advanceMultiApps(ExecFlagType type);
 
   /**
    * Find the smallest timestep over all MultiApps
@@ -509,6 +554,14 @@ public:
   void computeTransientImplicitJacobian(Real time, const NumericVector<Number>& u, const NumericVector<Number>& udot, Real shift, SparseMatrix<Number> &jacobian);
 
   ////
+
+  /**
+   * Computes the residual using whatever is sitting in the current solution vector then returns the L2 norm.
+   *
+   * @return The L2 norm of the residual
+   */
+  virtual Real computeResidualL2Norm();
+
   virtual void computeResidual(NonlinearImplicitSystem & sys, const NumericVector<Number> & soln, NumericVector<Number> & residual );
   virtual void computeResidualType(const NumericVector<Number> & soln, NumericVector<Number> & residual, Moose::KernelType type = Moose::KT_ALL);
   virtual void computeJacobian(NonlinearImplicitSystem & sys, const NumericVector<Number> & soln, SparseMatrix<Number> &  jacobian);
@@ -585,100 +638,11 @@ public:
 
   virtual GeometricSearchData & geomSearchData() { return _geometric_search_data; }
 
-  // Output /////
-  /// \todo{Remove after new output system implemented}
-  virtual Output & out() { return _out; }
-  virtual void output(bool force = false);
-  virtual void outputRestart(bool force = false);
-  virtual void outputDisplaced(bool state = true) { _output_displaced = state; }
-  virtual void outputSolutionHistory(bool state = true) { _output_solution_history = state; }
-  virtual void outputESInfo(bool state = true) { _output_es_info = state; }
-
-  //void addOutput(std::string damper_name, const std::string & name, InputParameters parameters);
-
   /**
-   * Whether or not we should be printing the linear residuals.
-   * @param state True to print linear residuals.
+   * Communicate to the Resurector the name of the restart filer
+   * @param file_name The file name for restarting from
    */
-  /// \todo{Remove after new output system implemented}
-  virtual void printLinearResiduals(bool state) { _print_linear_residuals = state; }
-
-  /**
-   * Whether or not we should be printing the linear residuals.
-   * \todo{Remove after new output system implemented}
-   */
-  virtual bool shouldPrintLinearResiduals() { return _print_linear_residuals; }
-
-  /**
-   * Set which variables will be written in output files
-   * \todo{Remove all after new output system implemented}
-   */
-  void setOutputVariables();
-  void hideVariableFromOutput(const VariableName & var_name);
-  void hideVariableFromOutput(const std::vector<VariableName> & var_names);
-  void showVariableInOutput(const VariableName & var_name);
-  void showVariableInOutput(const std::vector<VariableName> & var_names);
-
-  OutputProblem & getOutputProblem(unsigned int refinements, MeshFileName file = "");
-
-  /// \todo{Remove after new output system implemented}
-  void setMaxPPSRowsScreen(unsigned int n) { _pps_output_table_max_rows = n; }
-  void setPPSFitScreen(MooseEnum m) { _pps_fit_to_screen = m; }
-
-  /**
-   * Set (or reset) the output position of the problem.
-   */
-  void setOutputPosition(Point p);
-
-  // Restart //////
-
-  /**
-   * Set a file we will restart from
-   * @param file_name The file name we will restart from
-   */
-  virtual void setRestartFile(const std::string & file_name);
-
-  /**
-   * Set the number of restart files to save
-   * @param num_files Number of files to keep around
-   */
-  virtual void setNumRestartFiles(unsigned int num_files);
-
-  /**
-   * Set the suffix for the checkpoint directory
-   *
-   * This will be appended to the output file base to create
-   * the directory name for checkpoint files.
-   */
-  virtual void setCheckpointDirSuffix(std::string suffix);
-
-  /**
-   * Get the checkpoint dir suffix
-   */
-  virtual std::string getCheckpointDirSuffix();
-
-  /**
-   * Get the checkpoint dir
-   */
-  virtual std::string getCheckpointDir();
-
-  /**
-   * Gets the number of restart files to save
-   * @return the number of files to keep around
-   */
-  virtual unsigned int getNumRestartFiles();
-
-  /**
-   * Was this subproblem initialized from a restart file
-   * @return true if we restarted form a file, otherwise false
-   */
-  virtual bool isRestarting();
-
-  /**
-   * Are we recovering a previous simulation??
-   * @return true if recovering form a file, otherwise false
-   */
-  virtual bool isRecovering();
+  void setRestartFile(const std::string & file_name);
 
   /**
    * Register a piece of restartable data.  This is data that will get
@@ -702,10 +666,14 @@ public:
    */
   std::set<std::string> & getRecoverableData() { return _recoverable_data; }
 
-  /** Return a reference to the material property storage
+  ///@{
+  /**
+   * Return a reference to the material property storage
    * @return A const reference to the material property storage
    */
   const MaterialPropertyStorage & getMaterialPropertyStorage() { return _material_props; }
+  const MaterialPropertyStorage & getBndMaterialPropertyStorage() { return _bnd_material_props; }
+  ///@}
 
   /**
    * Get the solver parameters
@@ -724,16 +692,7 @@ public:
 
   void serializeSolution();
 
-  inline void setEarlyPerfLogPrint(bool val) { _output_setup_log_early = val; }
-
   // debugging iface /////
-
-  /**
-   * Set the number of top residual to be printed out (0 = no output)
-   */
-  void setDebugTopResiduals(unsigned int n) { _dbg_top_residuals = n; }
-
-  void setDebugPrintVarResidNorms(bool should_print) { _dbg_print_var_rnorms = should_print; }
 
   void setKernelTypeResidual(Moose::KernelType kt) { _kernel_type = kt; }
 
@@ -767,8 +726,62 @@ public:
    */
   const BoundaryID & getCurrentBoundaryID(){ return _current_boundary_id; }
 
+  /**
+   * Calls parentOutputPositionChanged() on all sub apps.
+   */
+  void parentOutputPositionChanged();
+
+  /**
+   * Enable printing of top residuals
+   */
+  void setDebugTopResiduals(unsigned int n) { _dbg_top_residuals = n; }
+
+  ///@{
+  /**
+   * These methods are used to determine whether stateful material properties need to be stored on
+   * internal sides.  There are four situations where this may be the case: 1) DGKernels
+   * 2) IntegratedBCs 3)InternalSideUserObjects 4)ElementalAuxBCs
+   *
+   * Method 1:
+   * @param bnd_id the boundary id for which to see if stateful material properties need to be stored
+   * @param tid the THREAD_ID of the caller
+   * @return Boolean indicating whether material properties need to be stored
+   *
+   * Method 2:
+   * @param subdomain_id the subdomain id for which to see if stateful material properties need to be stored
+   * @param tid the THREAD_ID of the caller
+   * @return Boolean indicating whether material properties need to be stored
+   */
+  bool needMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid);
+  bool needMaterialOnSide(SubdomainID subdomain_id, THREAD_ID tid);
+  ///@}
+
+  /**
+   * Dimension of the subspace spanned by vectors with a given prefix.
+   * @param prefix Prefix of the vectors spanning the subspace.
+   */
+  unsigned int subspaceDim(const std::string& prefix) const {if (_subspace_dim.count(prefix)) return _subspace_dim.find(prefix)->second; else return 0;}
+
+  /*
+   * Return a reference to the MaterialWarehouse
+   */
+  MaterialWarehouse & getMaterialWarehouse(THREAD_ID tid) { return _materials[tid]; }
+
+  /*
+   * Return a pointer to the MaterialData
+   */
+  MaterialData * getMaterialData(THREAD_ID tid) { return _material_data[tid]; }
+
+  /*
+   * Return a pointer to the MaterialData for boundary properties
+   */
+  MaterialData * getBoundaryMaterialData(THREAD_ID tid) { return _bnd_material_data[tid]; }
+
 
 protected:
+  /// Data names that will only be read from the restart file during RECOVERY
+  std::set<std::string> _recoverable_data;
+
   MooseMesh & _mesh;
   EquationSystems _eq;
   bool _initialized;
@@ -793,7 +806,7 @@ protected:
   /// Objects by names, indexing: [thread][name]->array of moose objects with name 'name'
   std::vector<std::map<std::string, std::vector<MooseObject *> > > _objects_by_name;
 
-  NonlinearSystem _nl;
+  NonlinearSystem & _nl;
   AuxiliarySystem _aux;
 
   Moose::CouplingType _coupling;                        ///< Type of variable coupling
@@ -802,8 +815,6 @@ protected:
   // Dimension of the subspace spanned by the vectors with a given prefix
   std::map<std::string,unsigned int> _subspace_dim;
 
-  // quadrature
-  Order _quadrature_order;                              ///< Quadrature order required by all variables to integrated over them.
   std::vector<Assembly *> _assembly;
 
   /// functions
@@ -833,6 +844,10 @@ protected:
   std::vector<PostprocessorData*> _pps_data;
   ExecStore<PostprocessorWarehouse> _pps;
 
+  // VectorPostprocessors
+  std::vector<VectorPostprocessorData *> _vpps_data;
+  ExecStore<VectorPostprocessorWarehouse> _vpps;
+
   // user objects
   ExecStore<UserObjectWarehouse> _user_objects;
 
@@ -850,29 +865,13 @@ protected:
   /// A map of objects that consume random numbers
   std::map<std::string, RandomData *> _random_data_objects;
 
-  /// Table with postprocessors that will go into files
-  FormattedTable & _pps_output_table_file; /// \todo{Remove after new output system implemented}
-  /// Table with postprocessors that will go on screen
-  FormattedTable & _pps_output_table_screen; /// \todo{Remove after new output system implemented}
-  unsigned int _pps_output_table_max_rows; /// \todo{Remove after new output system implemented}
-  MooseEnum _pps_fit_to_screen; /// \todo{Remove after new output system implemented}
+  // Cache for calculating materials on side
+  std::vector<LIBMESH_BEST_UNORDERED_MAP<SubdomainID, bool> > _block_mat_side_cache;
 
-  bool _print_linear_residuals; /// \todo{Remove after new output system implemented}
+  // Cache for calculating materials on side
+  std::vector<LIBMESH_BEST_UNORDERED_MAP<BoundaryID, bool> > _bnd_mat_side_cache;
 
   void computeUserObjectsInternal(std::vector<UserObjectWarehouse> & user_objects, UserObjectWarehouse::GROUP group);
-
-public:
-  /**
-   * Dimension of the subspace spanned by vectors with a given prefix.
-   * @param prefix Prefix of the vectors spanning the subspace.
-   */
-  unsigned int subspaceDim(const std::string& prefix) const {if (_subspace_dim.count(prefix)) return _subspace_dim.find(prefix)->second; else return 0;}
-
-  /// \todo{Remove after new output system implemented}
-  bool _postprocessor_screen_output;
-  bool _postprocessor_csv_output;
-  bool _postprocessor_gnuplot_output;
-  std::string _gnuplot_format;
 
 protected:
   void checkUserObjects();
@@ -881,20 +880,9 @@ protected:
   void checkCoordinateSystems();
 
   /**
-   * Add postprocessor values to the output table
-   * @param type type of PPS to add to the table
-   * \todo{Remove after new output system implemented}
-   */
-  void addPPSValuesToTable(ExecFlagType type);
-
-  /**
    * Call when it is possible that the needs for ghosted elements has changed.
    */
   void reinitBecauseOfGhosting();
-
-  // Output system
-  Output _out;
-  OutputProblem * _out_problem;
 
 #ifdef LIBMESH_ENABLE_AMR
   Adaptivity _adaptivity;
@@ -907,12 +895,6 @@ protected:
 
   bool _reinit_displaced_elem;
   bool _reinit_displaced_face;
-  /// true for outputting displaced problem
-  bool _output_displaced;
-  /// true for outputting solution history
-  bool _output_solution_history;
-  /// true for outputting equations systems information
-  bool _output_es_info;
 
   /// whether input file has been written
   bool _input_file_saved;
@@ -923,26 +905,17 @@ protected:
   /// Whether or not this system has any Constraints.
   bool _has_constraints;
 
+  /// Whether or not this systen has any multiapps
+  bool _has_multiapps;
+
   /// Whether nor not stateful materials have been initialized
   bool _has_initialized_stateful;
 
+  /// Flag for print top residuals
+  bool _dbg_top_residuals;
+
   /// Object responsible for restart (read/write)
   Resurrector * _resurrector;
-
-//  PerfLog _solve_only_perf_log;                         ///< Only times the solve
-  /// Determines if the setup log is printed before the first time step
-  bool _output_setup_log_early;  /// \todo{Remove after new output system implemented}
-
-
-  /// \todo{Remove after new output system implemented}
-  std::vector<VariableName> _variable_white_list;
-  std::vector<VariableName> _variable_black_list;
-
-  /// Number of top residual to print out
-  unsigned int _dbg_top_residuals;
-
-  // Should we print out residuals of individaul variables at NL iterations?
-  bool _dbg_print_var_rnorms;
 
   /// true if the Jacobian is constant
   bool _const_jacobian;
@@ -951,13 +924,7 @@ protected:
 
   SolverParams _solver_params;
 
-  /// The suffix to append to the output base to create the checkpoint directory
-  std::string _checkpoint_dir_suffix;
-
-  /// True if we're doing a _restart_ (note: this is _not_ true when recovering!)
-  bool _restarting;
-
-  /// Determies whether a check to verify an active kernel on every subdomain
+  /// Determines whether a check to verify an active kernel on every subdomain
   bool _kernel_coverage_check;
 
   /// Maximum number of quadrature points used in the problem
@@ -980,11 +947,9 @@ private:
    */
   virtual void registerRecoverableData(std::string name);
 
-  /// Data names that will only be read from the restart file during RECOVERY
-  std::set<std::string> _recoverable_data;
-
   friend class AuxiliarySystem;
   friend class NonlinearSystem;
+  friend class EigenSystem;
   friend class Resurrector;
   friend class MaterialPropertyIO;
   friend class RestartableDataIO;

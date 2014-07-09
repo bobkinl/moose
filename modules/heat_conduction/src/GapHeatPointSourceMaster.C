@@ -50,11 +50,11 @@ GapHeatPointSourceMaster::addPoints()
   std::map<unsigned int, PenetrationInfo *>::iterator it = _penetration_locator._penetration_info.begin();
   std::map<unsigned int, PenetrationInfo *>::iterator end = _penetration_locator._penetration_info.end();
 
-  for(; it!=end; ++it)
+  for (; it!=end; ++it)
   {
     PenetrationInfo * pinfo = it->second;
 
-    if(!pinfo)
+    if (!pinfo)
       continue;
 
     addPoint(pinfo->_elem, pinfo->_closest_point);
@@ -67,7 +67,7 @@ GapHeatPointSourceMaster::computeQpResidual()
 {
   PenetrationInfo * pinfo = point_to_info[_current_point];
   const Node * node = pinfo->_node;
-  long int dof_number = node->dof_number(_sys.number(), _var.index(), 0);
+  long int dof_number = node->dof_number(_sys.number(), _var.number(), 0);
 
   return -_test[_i][_qp] * _slave_flux(dof_number);
 }

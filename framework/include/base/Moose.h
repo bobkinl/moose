@@ -19,6 +19,7 @@
 #include "libmesh/perf_log.h"
 #include "libmesh/parallel.h"
 #include "libmesh/libmesh_common.h"
+#include "XTermConstants.h"
 
 #include <string>
 
@@ -32,7 +33,7 @@ class Factory;
  *
  * If the condition 'cond' is satisfied, it gets propagated across all processes, so the parallel code take the same path (if that is requires).
  */
-#define parallel_if(cond)                       \
+#define parallel_if (cond)                       \
     bool __local_bool__ = (cond);               \
     Parallel::max<bool>(__local_bool__);        \
     if (__local_bool__)
@@ -51,6 +52,8 @@ class Syntax;
 class FEProblem;
 
 /// Execution flags - when is the object executed/evaluated
+// Note: If this enum is changed, make sure to modify the local
+// function populateExecTypes in Moose.C.
 enum ExecFlagType {
   /// Object is evaluated only once at the beginning of the simulation
   EXEC_INITIAL,
@@ -86,6 +89,29 @@ extern PerfLog setup_perf_log;
 extern bool __trap_fpe;
 
 /**
+ * Variable indicating whether Console coloring will be turned on (default: true).
+ */
+extern bool __color_console;
+
+/**
+ * A static list of all the exec types.
+ */
+extern const std::vector<ExecFlagType> exec_types;
+
+/**
+ * Macros for coloring any output stream (_console, std::ostringstream, etc.)
+ */
+#define COLOR_BLACK   (Moose::__color_console ? BLACK : "")
+#define COLOR_RED     (Moose::__color_console ? RED : "")
+#define COLOR_GREEN   (Moose::__color_console ? GREEN : "")
+#define COLOR_YELLOW  (Moose::__color_console ? YELLOW : "")
+#define COLOR_BLUE    (Moose::__color_console ? BLUE : "")
+#define COLOR_MAGENTA (Moose::__color_console ? MAGENTA : "")
+#define COLOR_CYAN    (Moose::__color_console ? CYAN : "")
+#define COLOR_WHITE   (Moose::__color_console ? WHITE : "")
+#define COLOR_DEFAULT (Moose::__color_console ? DEFAULT : "")
+
+/**
  * Import libMesh::out, and libMesh::err for use in MOOSE.
  */
 using libMesh::out;
@@ -107,9 +133,11 @@ MPI_Comm swapLibMeshComm(MPI_Comm new_comm);
 
 void enableFPE(bool on = true);
 
+// MOOSE Requires PETSc to run, this CPP check will cause a compile error if PETSc is not found
+#ifndef LIBMESH_HAVE_PETSC
+  #error PETSc has not been detected, please ensure your environment is set up properly then rerun the libmesh build script and try to compile MOOSE again.
+#endif
+
 } // namespace Moose
-
-
-#define LENGTHOF(a) (sizeof(a)/sizeof(a[0]))
 
 #endif /* MOOSE_H */

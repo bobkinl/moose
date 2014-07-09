@@ -1,4 +1,10 @@
 [Tests]
+  [./range_check_param]
+    type = 'RunException'
+    input = 'range_check_param.i'
+    expect_err = 'Range check failed for parameter \S'
+  [../]
+
   [./checked_pointer_param_test]
     type = 'RunException'
     input = 'checked_pointer_param_test.i'
@@ -70,12 +76,6 @@
     input = 'bad_second_order_test.i'
     expect_err = 'Bad ElemType'
     method = 'DBG'
-  [../]
-
-  [./coupled_dot_aux_var_test]
-    type = 'RunException'
-    input = 'coupled_dot_aux_var_test.i'
-    expect_err = "Coupling time derivative of an auxiliary variable is not allowed."
   [../]
 
   [./deprecated_block_test]
@@ -231,7 +231,7 @@
   [./missing_material_prop_test2]
     type = 'RunException'
     input = 'missing_material_prop_test2.i'
-    expect_err = "Material property 'diff1' is not defined on block \d+"
+    expect_err = "Material property '\w+', requested by '\w+' is not defined on block \d+"
   [../]
 
   [./bad_stateful_material_only_old]
@@ -262,25 +262,25 @@
   [./missing_req_par_action_obj_test]
     type = 'RunException'
     input = 'missing_req_par_action_obj_test.i'
-    expect_err = "The required parameter '\S+' is missing"
+    expect_err = "The following required parameters are missing:"
   [../]
 
   [./missing_req_par_mesh_block_test]
     type = 'RunException'
     input = 'missing_req_par_mesh_block_test.i'
-    expect_err = "The required parameter '\S+' is missing"
+    expect_err = "The following required parameters are missing:"
   [../]
 
   [./missing_req_par_moose_obj_test]
     type = 'RunException'
     input = 'missing_req_par_moose_obj_test.i'
-    expect_err = "The required parameter '\S+' is missing"
+    expect_err = "The following required parameters are missing:"
   [../]
 
   [./missing_required_coupled_test]
     type = 'RunException'
     input = 'missing_required_coupled.i'
-    expect_err = "The required parameter '\S+' is missing"
+    expect_err = "The following required parameters are missing:"
   [../]
 
   [./multi_precond_test]
@@ -350,6 +350,7 @@
     type = 'RunException'
     input = 'subdomain_restricted_auxkernel_mismatch.i'
     expect_err = "In object \w+\ the defined blocks are outside of the domain of the variable"
+    max_parallel = 1  # Error output can interleave on multiple processes
   [../]
 
   [./subdomain_restricted_kernel_test]
@@ -363,6 +364,8 @@
     expect_out = "WARNING: The following parameters were unused in your input file"
     input = 'unused_param_test.i'
     cli_args = '--warn-unused'
+    # Don't allow --error-unused on this test
+    skip_test_harness_cli_args = true
   [../]
 
   [./uo_pps_name_collision_test]
@@ -375,6 +378,7 @@
     type = 'RunException'
     input = 'wrong_moose_object_test.i'
     expect_err = "Task \w+ is not registered to build \w+ derived objects"
+    method = 'opt oprof'
   [../]
 
   [./wrong_object_test2]
@@ -393,12 +397,25 @@
   [./ics_missing_variable]
     type = 'RunException'
     input = 'ic_variable_not_specified.i'
-    expect_err = "The required parameter '\S+' is missing."
+    expect_err = "The following required parameters are missing:"
   [../]
 
   [./ic_bnd_for_non_nodal]
     type = 'RunException'
     input = 'ic_bnd_for_non_nodal.i'
     expect_err = "You are trying to set a boundary restricted variable on non-nodal variable.  That is not allowed."
+  [../]
+
+  [./old_integrity_check]
+    type = 'RunException'
+    input = 'old_integrity_check.i'
+    expect_err = 'You may not couple in old or older values of \S+ when using a \"Steady\" executioner.'
+  [../]
+
+  [./node_value_off_block]
+    type = 'RunException'
+    input = 'nodal_value_off_block.i'
+    expect_err = 'Node 0 does not contain any dofs for the v variable'
+    method = 'dbg'
   [../]
 []

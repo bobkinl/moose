@@ -17,7 +17,6 @@
 #include "Problem.h"
 #include "SubProblem.h"
 #include "SystemBase.h"
-#include "MaterialData.h"
 #include "ParallelUniqueId.h"
 
 // libMesh includes
@@ -43,11 +42,9 @@ InputParameters validParams<InternalSideIndicator>()
 
 InternalSideIndicator::InternalSideIndicator(const std::string & name, InputParameters parameters) :
     Indicator(name, parameters),
-    NeighborCoupleable(parameters, false),
+    NeighborCoupleable(parameters, false, false),
     ScalarCoupleable(parameters),
     NeighborMooseVariableInterface(parameters, false),
-    TwoMaterialPropertyInterface(parameters),
-
     _field_var(_sys.getVariable(_tid, name)),
 
     _current_elem(_assembly.elem()),
@@ -76,7 +73,7 @@ InternalSideIndicator::InternalSideIndicator(const std::string & name, InputPara
     _grad_u_neighbor(_var.gradSlnNeighbor())
 {
   const std::vector<MooseVariable *> & coupled_vars = getCoupledMooseVars();
-  for(unsigned int i=0; i<coupled_vars.size(); i++)
+  for (unsigned int i=0; i<coupled_vars.size(); i++)
     addMooseVariableDependency(coupled_vars[i]);
 
   addMooseVariableDependency(mooseVariable());

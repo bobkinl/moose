@@ -1,4 +1,9 @@
+# [Debug]
+# show_top_residuals = 5
+# []
+
 [Mesh]
+  type = FileMesh
   file = constraint_test.e
 []
 
@@ -10,8 +15,7 @@
 []
 
 [Kernels]
-#  active = 'diff'
-
+  # active = 'diff'
   [./diff]
     type = Diffusion
     variable = u
@@ -19,15 +23,13 @@
 []
 
 [BCs]
-#  active = 'left right'
-
+  # active = 'left right'
   [./left]
     type = DirichletBC
     variable = u
     boundary = 1
     value = 0
   [../]
-
   [./right]
     type = DirichletBC
     variable = u
@@ -42,35 +44,29 @@
     variable = u
     slave = 2
     master = 3
+    master_variable = u
   [../]
 []
 
 [Preconditioning]
-#  active = 'FDP'
-  active = ' '
-
+  # active = 'FDP'
+  active = ''
   [./FDP]
+    # full = true
+    # off_diag_row    = 'v'
+    # off_diag_column = 'u'
     type = FDP
-#    full = true
-#    off_diag_row    = 'v'
-#    off_diag_column = 'u'
   [../]
 []
 
 [Executioner]
+  # l_tol = 1e-1
+  # l_tol = 1e-
+  # nl_rel_tol = 1e-14
   type = Steady
-
-  solve_type = 'NEWTON'
-
+  solve_type = NEWTON
   l_max_its = 100
-#  l_tol = 1e-1
-#  l_tol = 1e-
-#  nl_rel_tol = 1e-14
 []
-
-#[Debug]
-#  show_top_residuals = 5
-#[]
 
 [Outputs]
   file_base = out
@@ -81,3 +77,4 @@
     perf_log = true
   [../]
 []
+

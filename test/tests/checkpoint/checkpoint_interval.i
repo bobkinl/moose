@@ -49,10 +49,9 @@
 []
 
 [Outputs]
-  linear_residuals = true
   output_initial = true
   exodus = true
-  [./checkpoint]
+  [./out]
   # Test the checkpoint interval parameter
     type = Checkpoint
      interval = 3  # output every third timestep
@@ -61,6 +60,6 @@
   [./console]
     type = Console
     perf_log = true
+    linear_residuals = true
   [../]
 []
-

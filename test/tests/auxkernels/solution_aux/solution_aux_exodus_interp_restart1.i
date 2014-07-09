@@ -64,10 +64,7 @@
 
 [Outputs]
   exodus = true
-  [./checkpoint]
-    type = Checkpoint
-    num_files = 1
-  [../]
+  checkpoint = true
   [./console]
     type = Console
     perf_log = true

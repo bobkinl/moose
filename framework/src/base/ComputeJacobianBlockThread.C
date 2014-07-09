@@ -77,17 +77,17 @@ ComputeJacobianBlockThread::operator() (const ConstElemRange & range, bool bypas
       {
         subdomain = cur_subdomain;
         _fe_problem.subdomainSetup(subdomain, _tid);
-        _nl._kernels[_tid].updateActiveKernels(cur_subdomain);
+        _nl.updateActiveKernels(cur_subdomain, _tid);
       }
 
       _fe_problem.reinitMaterials(cur_subdomain, _tid);
 
       //Kernels
-      std::vector<Kernel *> kernels = _nl._kernels[_tid].active();
-      for (std::vector<Kernel *>::const_iterator it = kernels.begin(); it != kernels.end(); it++)
+      std::vector<KernelBase *> kernels = _nl.getKernelWarehouse(_tid).active();
+      for (std::vector<KernelBase *>::const_iterator it = kernels.begin(); it != kernels.end(); it++)
       {
-        Kernel * kernel = *it;
-        if (kernel->variable().index() == _ivar)
+        KernelBase * kernel = *it;
+        if (kernel->variable().number() == _ivar)
         {
           kernel->subProblem().prepareShapes(_jvar, _tid);
           kernel->computeOffDiagJacobian(_jvar);
@@ -106,7 +106,8 @@ ComputeJacobianBlockThread::operator() (const ConstElemRange & range, bool bypas
           {
             BoundaryID bnd_id = *it;
 
-            std::vector<IntegratedBC *> bcs = _nl._bcs[_tid].activeIntegrated(bnd_id);
+            std::vector<IntegratedBC *> bcs;
+            _nl.getBCWarehouse(_tid).activeIntegrated(bnd_id, bcs);
             if (bcs.size() > 0)
             {
               _fe_problem.prepareFace(elem, _tid);
@@ -117,7 +118,7 @@ ComputeJacobianBlockThread::operator() (const ConstElemRange & range, bool bypas
               for (std::vector<IntegratedBC *>::iterator it = bcs.begin(); it != bcs.end(); ++it)
               {
                 IntegratedBC * bc = *it;
-                if (bc->variable().index() == _ivar)
+                if (bc->variable().number() == _ivar)
                 {
                   if (bc->shouldApply())
                   {
@@ -144,7 +145,7 @@ ComputeJacobianBlockThread::operator() (const ConstElemRange & range, bool bypas
 
           if ((neighbor->active() && (neighbor->level() == elem->level()) && (elem_id < neighbor_id)) || (neighbor->level() < elem->level()))
           {
-            std::vector<DGKernel *> dgks = _nl._dg_kernels[_tid].active();
+            std::vector<DGKernel *> dgks = _nl.getDGKernelWarehouse(_tid).active();
             if (dgks.size() > 0)
             {
               _fe_problem.prepareFace(elem, _tid);
@@ -156,7 +157,7 @@ ComputeJacobianBlockThread::operator() (const ConstElemRange & range, bool bypas
               for (std::vector<DGKernel *>::iterator it = dgks.begin(); it != dgks.end(); ++it)
               {
                 DGKernel * dg = *it;
-                if (dg->variable().index() == _ivar)
+                if (dg->variable().number() == _ivar)
                 {
                   dg->subProblem().prepareFaceShapes(_jvar, _tid);
                   dg->subProblem().prepareNeighborShapes(_jvar, _tid);

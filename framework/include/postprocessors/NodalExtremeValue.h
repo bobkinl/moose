@@ -28,6 +28,13 @@ InputParameters validParams<NodalExtremeValue>();
 class NodalExtremeValue : public NodalVariablePostprocessor
 {
 public:
+  /// What type of extreme value we are going to compute
+  enum ExtremeType
+  {
+    MAX,
+    MIN
+  };
+
   /**
    * Class constructor
    * @param name The name of the postprocessor
@@ -41,7 +48,7 @@ public:
 
 protected:
   /// The extreme value type ("min" or "max")
-  int _type;
+  ExtremeType _type;
 
   /// The extreme value
   Real _value;

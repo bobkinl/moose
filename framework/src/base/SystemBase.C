@@ -44,6 +44,7 @@ void extraSparsity(SparsityPattern::Graph & sparsity,
 }
 
 SystemBase::SystemBase(SubProblem & subproblem, const std::string & name) :
+    libMesh::ParallelObject(subproblem),
     _subproblem(subproblem),
     _app(subproblem.getMooseApp()),
     _factory(_app.getFactory()),
@@ -128,7 +129,7 @@ SystemBase::zeroVariables(std::vector<std::string> & vars_to_be_zeroed)
 
     solution.close();
 
-    for(std::set<dof_id_type>::iterator it = dof_indices_to_zero.begin();
+    for (std::set<dof_id_type>::iterator it = dof_indices_to_zero.begin();
         it != dof_indices_to_zero.end();
         ++it)
       solution.set(*it, 0);
@@ -177,7 +178,7 @@ SystemBase::prepare(THREAD_ID tid)
     for (std::vector<MooseVariable *>::const_iterator it = vars.begin(); it != vars.end(); ++it)
       (*it)->clearDofIndices();
 
-    for(std::set<MooseVariable *>::iterator it = active_elemental_moose_variables.begin();
+    for (std::set<MooseVariable *>::iterator it = active_elemental_moose_variables.begin();
         it != active_elemental_moose_variables.end();
         ++it)
       if (&(*it)->sys() == this)
@@ -216,7 +217,7 @@ SystemBase::prepareFace(THREAD_ID tid, bool resize_data)
 
     // Make sure to resize the residual and jacobian datastructures for all the new variables
     if (resize_data)
-      for(unsigned int i=0; i<newly_prepared_vars.size(); i++)
+      for (unsigned int i=0; i<newly_prepared_vars.size(); i++)
         _subproblem.assembly(tid).prepareVariable(newly_prepared_vars[i]);
   }
 }
@@ -236,11 +237,11 @@ SystemBase::prepareNeighbor(THREAD_ID tid)
 void
 SystemBase::reinitElem(const Elem * /*elem*/, THREAD_ID tid)
 {
-  const std::set<MooseVariable *> & active_elemental_moose_variables = _subproblem.getActiveElementalMooseVariables(tid);
 
   if (_subproblem.hasActiveElementalMooseVariables(tid))
   {
-    for(std::set<MooseVariable *>::iterator it = active_elemental_moose_variables.begin();
+    const std::set<MooseVariable *> & active_elemental_moose_variables = _subproblem.getActiveElementalMooseVariables(tid);
+    for (std::set<MooseVariable *>::iterator it = active_elemental_moose_variables.begin();
         it != active_elemental_moose_variables.end();
         ++it)
       if (&(*it)->sys() == this)
@@ -367,7 +368,13 @@ SystemBase::augmentSendList(std::vector<dof_id_type> & send_list)
 
   std::vector<dof_id_type> dof_indices;
 
-  for(std::set<dof_id_type>::iterator elem_id = ghosted_elems.begin();
+  System & sys = system();
+
+  unsigned int sys_num = sys.number();
+
+  unsigned int n_vars = sys.n_vars();
+
+  for (std::set<dof_id_type>::iterator elem_id = ghosted_elems.begin();
       elem_id != ghosted_elems.end();
       ++elem_id)
   {
@@ -377,13 +384,37 @@ SystemBase::augmentSendList(std::vector<dof_id_type> & send_list)
     {
       dof_map.dof_indices(elem, dof_indices);
 
-      for(unsigned int i=0; i<dof_indices.size(); i++)
+      for (unsigned int i=0; i<dof_indices.size(); i++)
       {
         dof_id_type dof = dof_indices[i];
 
         // Only need to ghost it if it's actually not on this processor
         if (dof < dof_map.first_dof() || dof >= dof_map.end_dof())
           send_list.push_back(dof);
+      }
+
+      // Now add the DoFs from all of the nodes.  This is necessary because of block
+      // restricted variables.  A variable might not live _on_ this element but it
+      // might live on nodes connected to this element.
+      for (unsigned int n=0; n<elem->n_nodes(); n++)
+      {
+        Node * node = elem->get_node(n);
+
+        // Have to get each variable's dofs
+        for (unsigned int v=0; v<n_vars; v++)
+        {
+          const Variable & var = sys.variable(v);
+          unsigned int var_num = var.number();
+          unsigned int n_comp = var.n_components();
+
+          // See if this variable has any dofs at this node
+          if (node->n_dofs(sys_num, var_num) > 0)
+          {
+            // Loop over components of the variable
+            for (unsigned int c=0; c<n_comp; c++)
+              send_list.push_back(node->dof_number(sys_num, var_num, c));
+          }
+        }
       }
     }
   }

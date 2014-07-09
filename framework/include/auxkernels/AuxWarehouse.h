@@ -42,12 +42,9 @@ public:
   void residualSetup();
   void jacobianSetup();
 
-  const std::vector<AuxKernel *> & all() { return _all_aux_kernels; }
-  const std::vector<AuxKernel *> & allElementKernels() { return _all_element_aux_kernels; }
-  const std::vector<AuxKernel *> & allNodalKernels() { return _all_nodal_aux_kernels; }
-
-  const std::vector<AuxKernel *> & activeNodalKernels() { return _active_nodal_aux_kernels; }
-  const std::vector<AuxKernel *> & activeElementKernels() { return _active_element_aux_kernels; }
+  const std::vector<AuxKernel *> & all() const { return _all_aux_kernels; }
+  const std::vector<AuxKernel *> & allElementKernels() const { return _all_element_aux_kernels; }
+  const std::vector<AuxKernel *> & allNodalKernels() const { return _all_nodal_aux_kernels; }
 
   const std::vector<AuxKernel *> & activeBlockNodalKernels(SubdomainID block) { return _active_block_nodal_aux_kernels[block]; }
   const std::vector<AuxKernel *> & activeBlockElementKernels(SubdomainID block) { return _active_block_element_aux_kernels[block]; }
@@ -63,18 +60,11 @@ public:
   const std::vector<AuxScalarKernel *> & scalars() { return _scalar_kernels; }
 
   /**
-   * Adds a boundary condition aux kernel
-   * @param boundary_id Boundary ID this kernel works on
-   * @param aux BC kernel being added
-   */
-  void addActiveBC(BoundaryID boundary_id, AuxKernel *aux);
-
-  /**
    * Adds an auxiliary kernel
    * @param aux Kernel being added
    * @param block_ids Set of subdomain this kernel is active on
    */
-  void addAuxKernel(AuxKernel *aux, std::set<SubdomainID> block_ids);
+  void addAuxKernel(AuxKernel *aux);
 
   /**
    * Add a scalar kernels
@@ -90,10 +80,6 @@ protected:
   /// all nodal aux kernels
   std::vector<AuxKernel *> _all_nodal_aux_kernels;
 
-  /// nodal kernels active everywhere
-  std::vector<AuxKernel *> _active_nodal_aux_kernels;
-  /// elemental kernels active everywhere
-  std::vector<AuxKernel *> _active_element_aux_kernels;
   /// nodal kernels active on a block
   std::map<SubdomainID, std::vector<AuxKernel *> > _active_block_nodal_aux_kernels;
   /// elemental kernels active on a block

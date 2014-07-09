@@ -17,6 +17,12 @@
     exodiff = 'solution_aux_exodus_out.e'
   [../]
 
+  [./exodus_elem_map]
+    type = 'Exodiff'
+    input = 'solution_aux_exodus_elem_map.i'
+    exodiff = 'solution_aux_exodus_elem_map_out.e'
+  [../]
+
   [./exodus_elemental]
     type = 'Exodiff'
     input = 'solution_aux_exodus_elemental.i'
@@ -72,5 +78,25 @@
     type = 'Exodiff'
     input = 'solution_aux_scale.i'
     exodiff = 'solution_aux_scale_out.e'
+  [../]
+
+  [./aux_nonlinear_solution]
+    # This builds the XDA file for the 'aux_nonlinear_solution_from_xda' test below
+    type = RunApp
+    input = 'aux_nonlinear_solution.i'
+  [../]
+
+  [./aux_nonlinear_solution_from_xda]
+    type = Exodiff
+    input = 'aux_nonlinear_solution_xda.i'
+    exodiff = 'aux_nonlinear_solution_xda_out.e'
+    prereq = aux_nonlinear_solution
+  [../]
+
+  [./aux_nonlinear_solution_from_xdr]
+    type = Exodiff
+    input = 'aux_nonlinear_solution_xdr.i'
+    exodiff = 'aux_nonlinear_solution_xdr_out.e'
+    prereq = aux_nonlinear_solution
   [../]
 []

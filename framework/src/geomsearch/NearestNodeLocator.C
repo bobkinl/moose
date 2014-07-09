@@ -90,7 +90,7 @@ NearestNodeLocator::findNodes()
     // This means there was a user specified inflation... so we can build a BB
     if (inflation.size() > 0)
     {
-      MeshTools::BoundingBox my_box = MeshTools::processor_bounding_box(_mesh, libMesh::processor_id());
+      MeshTools::BoundingBox my_box = MeshTools::processor_bounding_box(_mesh, _mesh.processor_id());
 
       Real distance_x = 0;
       Real distance_y = 0;
@@ -144,7 +144,7 @@ NearestNodeLocator::findNodes()
     _slave_nodes = snt._slave_nodes;
     _neighbor_nodes = snt._neighbor_nodes;
 
-    for(std::set<unsigned int>::iterator it = snt._ghosted_elems.begin();
+    for (std::set<unsigned int>::iterator it = snt._ghosted_elems.begin();
         it != snt._ghosted_elems.end();
         ++it)
       _subproblem.addGhostedElem(*it);

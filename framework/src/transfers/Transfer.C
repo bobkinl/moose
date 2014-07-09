@@ -51,12 +51,12 @@ Transfer::Transfer(const std::string & name, InputParameters parameters) :
  * Note that this implies that variable names are unique across all systems!
  */
 System *
-Transfer::find_sys(EquationSystems & es, std::string & var_name)
+Transfer::find_sys(EquationSystems & es, const std::string & var_name) const
 {
   System * sys = NULL;
 
   // Find the system this variable is from
-  for(unsigned int i=0; i<es.n_systems(); i++)
+  for (unsigned int i=0; i<es.n_systems(); i++)
   {
     if (es.get_system(i).has_variable(var_name))
     {

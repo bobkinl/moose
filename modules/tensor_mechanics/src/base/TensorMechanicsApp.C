@@ -4,6 +4,8 @@
 
 #include "TensorMechanicsAction.h"
 #include "StressDivergenceTensors.h"
+#include "CosseratStressDivergenceTensors.h"
+#include "MomentBalancing.h"
 #include "LinearElasticMaterial.h"
 #include "FiniteStrainElasticMaterial.h"
 #include "FiniteStrainPlasticMaterial.h"
@@ -16,6 +18,7 @@
 #include "FiniteStrainPlasticAux.h"
 #include "CrystalPlasticitySlipSysAux.h"
 #include "CrystalPlasticityRotationOutAux.h"
+#include "CosseratLinearElasticMaterial.h"
 
 template<>
 InputParameters validParams<TensorMechanicsApp>()
@@ -27,7 +30,7 @@ InputParameters validParams<TensorMechanicsApp>()
 TensorMechanicsApp::TensorMechanicsApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   TensorMechanicsApp::registerObjects(_factory);
@@ -50,12 +53,15 @@ void
 TensorMechanicsApp::registerObjects(Factory & factory)
 {
   registerKernel(StressDivergenceTensors);
+  registerKernel(CosseratStressDivergenceTensors);
+  registerKernel(MomentBalancing);
 
   registerMaterial(LinearElasticMaterial);
   registerMaterial(FiniteStrainElasticMaterial);
   registerMaterial(FiniteStrainPlasticMaterial);
   registerMaterial(FiniteStrainRatePlasticMaterial);
   registerMaterial(FiniteStrainCrystalPlasticity);
+  registerMaterial(CosseratLinearElasticMaterial);
 
   registerAux(RankTwoAux);
   registerAux(RealTensorValueAux);

@@ -40,7 +40,8 @@
 [Executioner]
   # Preconditioned JFNK (default)
   type = Transient
-  num_steps = 20
+  start_time = -1
+  end_time = 0
   dt = 0.1
   solve_type = PJFNK
   petsc_options_iname = '-pc_type -pc_hypre_type'
@@ -55,10 +56,9 @@
     output_initial = false
     nonlinear_residuals =  true
     linear_residuals = true
-    file = true
     verbose = true
     perf_log = true
-    show_perf_log_early = true
+    setup_log_early = true
+    time_precision = 6
  [../]
 []
-b

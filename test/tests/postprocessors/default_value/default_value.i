@@ -11,18 +11,14 @@
 []
 
 [Kernels]
-  active = 'diff'
   [./diff]
     type = DefaultPostprocessorDiffusion
     variable = u
     #pps_name = invalid_postprocessor_name
   [../]
-
-  # The gold file for this test was created with this Kernel
-  [./coef_diffusion]
-    type = CoefDiffusion
+  [./time]
+    type = TimeDerivative
     variable = u
-    coef = 0.1
   [../]
 []
 
@@ -42,11 +38,11 @@
 []g
 
 [Executioner]
-  # Preconditioned JFNK (default)
-  type = Steady
-  solve_type = PJFNK
+  type = Transient
   petsc_options_iname = '-pc_type -pc_hypre_type'
   petsc_options_value = 'hypre boomeramg'
+  dt = 0.1
+  num_steps = 10
 []
 
 [Outputs]

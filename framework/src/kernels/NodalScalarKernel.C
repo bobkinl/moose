@@ -31,7 +31,7 @@ NodalScalarKernel::NodalScalarKernel(const std::string & name, InputParameters p
 {
   // Fill in the MooseVariable dependencies
   const std::vector<MooseVariable *> & coupled_vars = getCoupledMooseVars();
-  for(unsigned int i=0; i<coupled_vars.size(); i++)
+  for (unsigned int i=0; i<coupled_vars.size(); i++)
     addMooseVariableDependency(coupled_vars[i]);
 }
 
@@ -49,6 +49,6 @@ NodalScalarKernel::reinit()
 void
 NodalScalarKernel::computeOffDiagJacobian(unsigned int jvar)
 {
-  if (jvar == _var.index())
+  if (jvar == _var.number())
     computeJacobian();
 }

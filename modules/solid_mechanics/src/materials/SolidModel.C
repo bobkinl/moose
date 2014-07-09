@@ -288,56 +288,56 @@ SolidModel::checkElasticConstants()
   }
 
   // Calculate lambda, the shear modulus, and Young's modulus
-  if(_lambda_set && _shear_modulus_set) // First and second Lame
+  if (_lambda_set && _shear_modulus_set) // First and second Lame
   {
     _youngs_modulus = _shear_modulus*(3*_lambda+2*_shear_modulus)/(_lambda+_shear_modulus);
     _poissons_ratio = 0.5 * _lambda / (_lambda + _shear_modulus);
   }
-  else if(_lambda_set && _poissons_ratio_set)
+  else if (_lambda_set && _poissons_ratio_set)
   {
     _shear_modulus = (_lambda * (1.0 - 2.0 * _poissons_ratio)) / (2.0 * _poissons_ratio);
     _youngs_modulus = _shear_modulus*(3*_lambda+2*_shear_modulus)/(_lambda+_shear_modulus);
 
   }
-  else if(_lambda_set && _bulk_modulus_set)
+  else if (_lambda_set && _bulk_modulus_set)
   {
     _shear_modulus = 3.0 * (_bulk_modulus - _lambda) / 2.0;
     _youngs_modulus = _shear_modulus*(3*_lambda+2*_shear_modulus)/(_lambda+_shear_modulus);
     _poissons_ratio = _lambda / ( 3 * _bulk_modulus - _lambda );
   }
-  else if(_lambda_set && _youngs_modulus_set)
+  else if (_lambda_set && _youngs_modulus_set)
   {
     _shear_modulus = ( (_youngs_modulus - 3.0*_lambda) / 4.0 ) + ( std::sqrt( (_youngs_modulus-3.0*_lambda)*(_youngs_modulus-3.0*_lambda) + 8.0*_lambda*_youngs_modulus ) / 4.0 );
     _poissons_ratio = _lambda / ( 3 * _bulk_modulus - _lambda );
   }
-  else if(_shear_modulus_set && _poissons_ratio_set)
+  else if (_shear_modulus_set && _poissons_ratio_set)
   {
     _lambda = ( 2.0 * _shear_modulus * _poissons_ratio ) / (1.0 - 2.0*_poissons_ratio);
     _youngs_modulus = _shear_modulus*(3*_lambda+2*_shear_modulus)/(_lambda+_shear_modulus);
   }
-  else if(_shear_modulus_set && _bulk_modulus_set)
+  else if (_shear_modulus_set && _bulk_modulus_set)
   {
     _lambda = _bulk_modulus - 2.0 * _shear_modulus / 3.0;
     _youngs_modulus = _shear_modulus*(3*_lambda+2*_shear_modulus)/(_lambda+_shear_modulus);
     _poissons_ratio = (3*_bulk_modulus-2*_shear_modulus)/(2*(3*_bulk_modulus+_shear_modulus));
   }
-  else if(_shear_modulus_set && _youngs_modulus_set)
+  else if (_shear_modulus_set && _youngs_modulus_set)
   {
     _lambda = ((2.0*_shear_modulus - _youngs_modulus) * _shear_modulus) / (_youngs_modulus - 3.0*_shear_modulus);
     _poissons_ratio = 0.5*_youngs_modulus/_shear_modulus - 1;
   }
-  else if(_poissons_ratio_set && _bulk_modulus_set)
+  else if (_poissons_ratio_set && _bulk_modulus_set)
   {
     _lambda = (3.0 * _bulk_modulus * _poissons_ratio) / (1.0 + _poissons_ratio);
     _shear_modulus = (3.0 * _bulk_modulus * (1.0 - 2.0*_poissons_ratio)) / (2.0 * (1.0 + _poissons_ratio));
     _youngs_modulus = _shear_modulus*(3*_lambda+2*_shear_modulus)/(_lambda+_shear_modulus);
   }
-  else if(_youngs_modulus_set && _poissons_ratio_set) // Young's Modulus and Poisson's Ratio
+  else if (_youngs_modulus_set && _poissons_ratio_set) // Young's Modulus and Poisson's Ratio
   {
     _lambda = (_poissons_ratio * _youngs_modulus) / ( (1.0+_poissons_ratio) * (1-2.0*_poissons_ratio) );
     _shear_modulus = _youngs_modulus / ( 2.0 * (1.0+_poissons_ratio));
   }
-  else if(_youngs_modulus_set && _bulk_modulus_set)
+  else if (_youngs_modulus_set && _bulk_modulus_set)
   {
     _lambda = 3.0 * _bulk_modulus * (3.0 * _bulk_modulus - _youngs_modulus) / (9.0 * _bulk_modulus - _youngs_modulus);
     _shear_modulus = 3.0 * _youngs_modulus * _bulk_modulus / (9.0 * _bulk_modulus - _youngs_modulus);
@@ -420,8 +420,14 @@ SolidModel::modifyStrainIncrement()
   if (_constitutive_active)
   {
     ConstitutiveModel * cm = _constitutive_model[current_block];
-    modified |= cm->modifyStrainIncrement(*_current_elem, _qp,
-                                          _strain_increment, _d_strain_dT);
+
+    // Let's be a little careful and check for a non-existent
+    // ConstitutiveModel, which could be returned as a default value
+    // from std::map::operator[]
+    if (!cm)
+      mooseError("ConstitutiveModel not available for block " << current_block);
+
+    modified |= cm->modifyStrainIncrement(*_current_elem, _qp, _strain_increment, _d_strain_dT);
   }
 
   if (!modified)
@@ -667,15 +673,20 @@ SolidModel::computeConstitutiveModelStress()
   // Given the stretching, compute the stress increment and add it to the old stress. Also update the creep strain
   // stress = stressOld + stressIncrement
 
-  if(_t_step == 0) return;
+  if (_t_step == 0) return;
 
   const SubdomainID current_block = _current_elem->subdomain_id();
   ConstitutiveModel* cm = _constitutive_model[current_block];
-  mooseAssert(_constitutive_active, "Logic error.  ConstitutiveModel not active.");
-  mooseAssert(cm, "Logic error.  No ConstitutiveModel.");
 
-  cm->computeStress( *_current_elem, _qp, *elasticityTensor(), _stress_old, _strain_increment,
-                     _stress[_qp] );
+  mooseAssert(_constitutive_active, "Logic error.  ConstitutiveModel not active.");
+
+  // Let's be a little careful and check for a non-existent
+  // ConstitutiveModel, which could be returned as a default value
+  // from std::map::operator[]
+  if (!cm)
+    mooseError("Logic error.  No ConstitutiveModel for current_block=" << current_block << ".");
+
+  cm->computeStress(*_current_elem, _qp, *elasticityTensor(), _stress_old, _strain_increment, _stress[_qp]);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -710,6 +721,13 @@ SolidModel::updateElasticityTensor(SymmElasticityTensor & tensor)
   {
     const SubdomainID current_block = _current_elem->subdomain_id();
     ConstitutiveModel* cm = _constitutive_model[current_block];
+
+    // Let's be a little careful and check for a non-existent
+    // ConstitutiveModel, which could be returned as a default value
+    // from std::map::operator[]
+    if (!cm)
+      mooseError("ConstitutiveModel not available for block " << current_block);
+
     changed |= cm->updateElasticityTensor( _qp, tensor );
   }
 
@@ -767,10 +785,10 @@ SolidModel::initialSetup()
 
   // Load in the volumetric models or constitutive model
 
-  for(unsigned i(0); i < _block_id.size(); ++i)
+  for (unsigned i(0); i < _block_id.size(); ++i)
   {
     const std::vector<Material*> * mats_p;
-    if(_bnd)
+    if (_bnd)
     {
       mats_p = &_fe_problem.getFaceMaterials( _block_id[i], _tid );
     }
@@ -1115,6 +1133,7 @@ SolidModel::crackingStressRotation()
         }
 
         crackFactor = computeCrackFactor( i, sigma(i), (*_crack_flags)[_qp](i) );
+
         (*_crack_flags)[_qp](i) = crackFactor;
         _crack_flags_local(i) = crackFactor;
 
@@ -1232,11 +1251,11 @@ SolidModel::getNumKnownCrackDirs() const
   return retVal+fromElement;
 }
 
-Elk::SolidMechanics::Element *
+SolidMechanics::Element *
 SolidModel::createElement( const std::string & name,
                            InputParameters & parameters )
 {
-  Elk::SolidMechanics::Element * element(NULL);
+  SolidMechanics::Element * element(NULL);
 
   std::string formulation = getParam<MooseEnum>("formulation");
   std::transform( formulation.begin(), formulation.end(),
@@ -1257,7 +1276,7 @@ SolidModel::createElement( const std::string & name,
     {
       mooseError("Nonlinear3D formulation requested for coord_type = RZ problem");
     }
-    element = new Elk::SolidMechanics::Nonlinear3D(name, parameters);
+    element = new SolidMechanics::Nonlinear3D(*this, name, parameters);
   }
   else if ( formulation == "axisymmetricrz" )
   {
@@ -1266,7 +1285,7 @@ SolidModel::createElement( const std::string & name,
     {
       mooseError("AxisymmetricRZ must define disp_r and disp_z");
     }
-    element = new Elk::SolidMechanics::AxisymmetricRZ(name, parameters);
+    element = new SolidMechanics::AxisymmetricRZ(*this, name, parameters);
   }
   else if ( formulation == "sphericalr" )
   {
@@ -1274,7 +1293,7 @@ SolidModel::createElement( const std::string & name,
     {
       mooseError("SphericalR must define disp_r");
     }
-    element = new Elk::SolidMechanics::SphericalR(name, parameters);
+    element = new SolidMechanics::SphericalR(*this, name, parameters);
   }
   else if ( formulation == "planestrain" )
   {
@@ -1283,7 +1302,7 @@ SolidModel::createElement( const std::string & name,
     {
       mooseError("PlaneStrain must define disp_x and disp_y");
     }
-    element = new Elk::SolidMechanics::PlaneStrain(name, parameters);
+    element = new SolidMechanics::PlaneStrain(*this, name, parameters);
   }
   else if ( formulation == "linear" )
   {
@@ -1295,7 +1314,7 @@ SolidModel::createElement( const std::string & name,
     {
       mooseError("Linear formulation requested for coord_type = RZ problem");
     }
-    element = new Elk::SolidMechanics::Linear(name, parameters);
+    element = new SolidMechanics::Linear(*this, name, parameters);
   }
   else if ( formulation != "" )
   {
@@ -1311,7 +1330,7 @@ SolidModel::createElement( const std::string & name,
       err += ": RZ coord sys requires disp_r and disp_z for AxisymmetricRZ formulation";
       mooseError(err);
     }
-    element = new Elk::SolidMechanics::AxisymmetricRZ(name, parameters);
+    element = new SolidMechanics::AxisymmetricRZ(*this, name, parameters);
   }
   else if ( !element && _coord_type == Moose::COORD_RSPHERICAL )
   {
@@ -1321,7 +1340,7 @@ SolidModel::createElement( const std::string & name,
       err += ": RSPHERICAL coord sys requires disp_r for SphericalR formulation";
       mooseError(err);
     }
-    element = new Elk::SolidMechanics::SphericalR(name, parameters);
+    element = new SolidMechanics::SphericalR(*this, name, parameters);
   }
 
   if (!element)
@@ -1334,7 +1353,7 @@ SolidModel::createElement( const std::string & name,
       {
         mooseError("Error with displacement specification in material " + name);
       }
-      element = new Elk::SolidMechanics::Nonlinear3D(name, parameters);
+      element = new SolidMechanics::Nonlinear3D(*this, name, parameters);
     }
     else if (isCoupled("disp_x") &&
              isCoupled("disp_y"))
@@ -1343,7 +1362,7 @@ SolidModel::createElement( const std::string & name,
       {
         mooseError("Error with displacement specification in material " + name);
       }
-      element = new Elk::SolidMechanics::PlaneStrain(name, parameters);
+      element = new SolidMechanics::PlaneStrain(*this, name, parameters);
     }
     else if (isCoupled("disp_r") &&
              isCoupled("disp_z"))
@@ -1352,7 +1371,7 @@ SolidModel::createElement( const std::string & name,
       {
         mooseError("RZ coord system not specified, but disp_r and disp_z are");
       }
-      element = new Elk::SolidMechanics::AxisymmetricRZ( name, parameters );
+      element = new SolidMechanics::AxisymmetricRZ( *this, name, parameters );
     }
     else if (isCoupled("disp_r"))
     {
@@ -1360,11 +1379,11 @@ SolidModel::createElement( const std::string & name,
       {
         mooseError("RSPHERICAL coord system not specified, but disp_r is");
       }
-      element = new Elk::SolidMechanics::SphericalR( name, parameters );
+      element = new SolidMechanics::SphericalR( *this, name, parameters );
     }
     else if (isCoupled("disp_x"))
     {
-      element = new Elk::SolidMechanics::Linear( name, parameters );
+      element = new SolidMechanics::Linear( *this, name, parameters );
     }
     else
     {
@@ -1392,7 +1411,7 @@ SolidModel::createConstitutiveModel(const std::string & cm_name, const InputPara
   _models_to_free.insert(cm);  // Keep track of the dynamic memory that is created internally to this object
 
   _constitutive_active = true;
-  for(unsigned i(0); i < _block_id.size(); ++i)
+  for (unsigned i(0); i < _block_id.size(); ++i)
   {
     _constitutive_model[_block_id[i]] = cm;
   }

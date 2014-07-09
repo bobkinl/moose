@@ -46,31 +46,46 @@ public:
   virtual ~Assembly();
 
   /**
-   * Get a reference to a pointer that will contain the current "volume" FE.
-   * Note that when returned the pointer might initially be NULL.
-   * It won't get an actual value until reinit is called.
+   * Build FEs with a type
    * @param type The type of FE
+   */
+  void buildFE(FEType type);
+
+  /**
+   * Build FEs for a face with a type
+   * @param type The type of FE
+   */
+  void buildFaceFE(FEType type);
+
+  /**
+   * Build FEs for a neighbor face with a type
+   * @param type The type of FE
+   */
+  void buildFaceNeighborFE(FEType type);
+
+   /**
+   * Get a reference to a pointer that will contain the current volume FE.
+   * @param type The type of FE
+   * @param dim The dimension of the current volume
    * @return A _reference_ to the pointer.  Make sure to store this as a reference!
    */
-  FEBase * & getFE(FEType type);
+  FEBase * & getFE(FEType type, unsigned int dim);
 
   /**
    * Get a reference to a pointer that will contain the current "face" FE.
-   * Note that when returned the pointer might initially be NULL.
-   * It won't get an actual value until reinit is called.
    * @param type The type of FE
+   * @param dim The dimension of the current face
    * @return A _reference_ to the pointer.  Make sure to store this as a reference!
    */
-  FEBase * & getFEFace(FEType type);
+  FEBase * & getFEFace(FEType type, unsigned int dim);
 
   /**
    * Get a reference to a pointer that will contain the current "neighbor" FE.
-   * Note that when returned the pointer might initially be NULL.
-   * It won't get an actual value until reinit is called.
    * @param type The type of FE
+   * @param dim The dimension of the neighbor face
    * @return A _reference_ to the pointer.  Make sure to store this as a reference!
    */
-  FEBase * & getFEFaceNeighbor(FEType type);
+  FEBase * & getFEFaceNeighbor(FEType type, unsigned int dim);
 
   /**
    * Returns the reference to the current quadrature being used
@@ -187,6 +202,12 @@ public:
   QBase * & qRuleNeighbor() { return _current_qrule_neighbor; }
 
   /**
+   * Returns the reference to the transformed jacobian weights on a current face
+   * @return A _reference_.  Make sure to store this as a reference!
+   */
+  const MooseArray<Real> & JxWNeighbor() { return _current_JxW_neighbor; }
+
+  /**
    * Returns the reference to the node
    * @return A _reference_.  Make sure to store this as a reference!
    */
@@ -199,9 +220,9 @@ public:
   const Node * & nodeNeighbor() { return _current_neighbor_node; }
 
   /**
-   * Creates the volume, face and arbitrary qrules based on the Order passed in.
+   * Creates the volume, face and arbitrary qrules based on the orders passed in.
    */
-  void createQRules(QuadratureType type, Order o);
+  void createQRules(QuadratureType type, Order order, Order volume_order, Order face_order);
 
   /**
    * Set the qrule to be used for volume integration.
@@ -273,7 +294,7 @@ public:
   /**
    * Reinitializes the neighbor at the physical coordinates given.
    */
-  void reinitNeighborAtPhysical(const Elem * neighbor, const std::vector<Point> & physical_points);
+  void reinitNeighborAtPhysical(const Elem * neighbor, unsigned int neighbor_side, const std::vector<Point> & physical_points);
 
   /**
    * Reinitialize assembly data for a node
@@ -381,17 +402,17 @@ public:
   const VariablePhiSecond & secondPhiFaceNeighbor() { return _second_phi_face_neighbor; }
 
 
-  const VariablePhiValue & fePhi(FEType type)             { getFE(type); return _fe_shape_data[type]->_phi; }
-  const VariablePhiGradient & feGradPhi(FEType type) { getFE(type); return _fe_shape_data[type]->_grad_phi; }
-  const VariablePhiSecond & feSecondPhi(FEType type) { getFE(type); _need_second_derivative[type] = true; return _fe_shape_data[type]->_second_phi; }
+  const VariablePhiValue & fePhi(FEType type)             { buildFE(type); return _fe_shape_data[type]->_phi; }
+  const VariablePhiGradient & feGradPhi(FEType type) { buildFE(type); return _fe_shape_data[type]->_grad_phi; }
+  const VariablePhiSecond & feSecondPhi(FEType type) { buildFE(type); _need_second_derivative[type] = true; return _fe_shape_data[type]->_second_phi; }
 
-  const VariablePhiValue & fePhiFace(FEType type)             { getFEFace(type); return _fe_shape_data_face[type]->_phi; }
-  const VariablePhiGradient & feGradPhiFace(FEType type) { getFEFace(type); return _fe_shape_data_face[type]->_grad_phi; }
-  const VariablePhiSecond & feSecondPhiFace(FEType type) { getFEFace(type); _need_second_derivative[type] = true; return _fe_shape_data_face[type]->_second_phi; }
+  const VariablePhiValue & fePhiFace(FEType type)             { buildFaceFE(type); return _fe_shape_data_face[type]->_phi; }
+  const VariablePhiGradient & feGradPhiFace(FEType type) { buildFaceFE(type); return _fe_shape_data_face[type]->_grad_phi; }
+  const VariablePhiSecond & feSecondPhiFace(FEType type) { buildFaceFE(type); _need_second_derivative[type] = true; return _fe_shape_data_face[type]->_second_phi; }
 
-  const VariablePhiValue & fePhiFaceNeighbor(FEType type)             { getFEFaceNeighbor(type); return _fe_shape_data_face_neighbor[type]->_phi; }
-  const VariablePhiGradient & feGradPhiFaceNeighbor(FEType type) { getFEFaceNeighbor(type); return _fe_shape_data_face_neighbor[type]->_grad_phi; }
-  const VariablePhiSecond & feSecondPhiFaceNeighbor(FEType type) { getFEFaceNeighbor(type); _need_second_derivative[type] = true; return _fe_shape_data_face_neighbor[type]->_second_phi; }
+  const VariablePhiValue & fePhiFaceNeighbor(FEType type)             { buildFaceNeighborFE(type); return _fe_shape_data_face_neighbor[type]->_phi; }
+  const VariablePhiGradient & feGradPhiFaceNeighbor(FEType type) { buildFaceNeighborFE(type); return _fe_shape_data_face_neighbor[type]->_grad_phi; }
+  const VariablePhiSecond & feSecondPhiFaceNeighbor(FEType type) { buildFaceNeighborFE(type); _need_second_derivative[type] = true; return _fe_shape_data_face_neighbor[type]->_second_phi; }
 
   /**
    * Invalidate any currently cached data.  In particular this will cause FE data to get recached.
@@ -508,11 +529,15 @@ protected:
 
   /// types of finite elements
   std::map<unsigned int, std::map<FEType, FEBase *> > _fe_neighbor;
+  /// Each dimension's helper objects
+  std::map<unsigned int, FEBase **> _holder_fe_neighbor_helper;
 
   /// quadrature rule used on neighbors
   QBase * _current_qrule_neighbor;
   /// Holds arbitrary qrules for each dimension
   std::map<unsigned int, ArbitraryQuadrature *> _holder_qrule_neighbor;
+  /// The current transformed jacobian weights on a neighbor's face
+  MooseArray<Real> _current_JxW_neighbor;
 
   /// The current "element" we are currently on.
   const Elem * _current_elem;
@@ -528,6 +553,8 @@ protected:
   const Elem * _current_neighbor_elem;
   /// The current side of the selected neighboring element (valid only when working with sides)
   unsigned int _current_neighbor_side;
+  /// The current side element of the ncurrent neighbor element
+  const Elem * _current_neighbor_side_elem;
   /// Volume of the current neighbor
   Real _current_neighbor_volume;
   /// The current node we are working with

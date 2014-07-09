@@ -72,13 +72,13 @@ public:
    *
    * @return vector of SubdomainNames that are valid for this object
    */
-  const std::vector<SubdomainName> & blocks();
+  const std::vector<SubdomainName> & blocks() const;
 
   /**
    * Return the number of blocks for this object
    * @return The number of subdomains
    */
-  unsigned int numBlocks();
+  unsigned int numBlocks() const;
 
   /**
    * Return the block subdomain ids for this object
@@ -91,28 +91,28 @@ public:
    * @param name A SubdomainName to check
    * @return True if the given id is valid for this object
    */
-  bool hasBlocks(SubdomainName name);
+  bool hasBlocks(SubdomainName name) const;
 
   /**
    * Test if the supplied vector of block names are valid for this object
    * @param names A vector of SubdomainNames to check
    * @return True if the given ids are valid for this object
    */
-  bool hasBlocks(std::vector<SubdomainName> names);
+  bool hasBlocks(std::vector<SubdomainName> names) const;
 
   /**
    * Test if the supplied block ids are valid for this object
    * @param id A SubdomainID to check
    * @return True if the given id is valid for this object
    */
-  bool hasBlocks(SubdomainID id);
+  bool hasBlocks(SubdomainID id) const;
 
   /**
    * Test if the supplied vector block ids are valid for this object
    * @param ids A vector of SubdomainIDs ids to check
    * @return True if the all of the given ids are found within the ids for this object
    */
-  bool hasBlocks(std::vector<SubdomainID> ids);
+  bool hasBlocks(std::vector<SubdomainID> ids) const;
 
   /**
    * Test if the supplied set of block ids are valid for this object
@@ -120,7 +120,7 @@ public:
    * @return True if the all of the given ids are found within the ids for this object
    * \see isSubset
    */
-  bool hasBlocks(std::set<SubdomainID> ids);
+  bool hasBlocks(std::set<SubdomainID> ids) const;
 
   /**
    * Test if the class block ids are a subset of the supplied objects
@@ -128,7 +128,7 @@ public:
    * @return True if all of the block ids for this class are found within the given ids (opposite of hasBlocks)
    * \see hasBlocks
    */
-  bool isBlockSubset(std::set<SubdomainID> ids);
+  bool isBlockSubset(std::set<SubdomainID> ids) const;
 
   /**
    * Test if the class block ids are a subset of the supplied objects
@@ -136,7 +136,7 @@ public:
    * @return True if all of the block ids for this class are found within the given ids (opposite of hasBlocks)
    * \see hasBlocks
    */
-  bool isBlockSubset(std::vector<SubdomainID> ids);
+  bool isBlockSubset(std::vector<SubdomainID> ids) const;
 
   /**
    * Check if a material property is valid for all blocks of this object
@@ -150,14 +150,20 @@ public:
    * \see MaterialPropertyInterface::getMaterialPropertyBlocks
    * \see isBlockSubet
    */
-  bool hasBlockMaterialProperty(const std::string & name);
+  bool hasBlockMaterialProperty(const std::string & name) const;
+
+  /**
+   * Return all of the SubdomainIDs for the mesh
+   * @return A set of all subdomians for the entire domain
+   */
+  const std::set<SubdomainID> & meshBlockIDs();
 
 private:
 
-  /// Set of block ids
+  /// Set of block ids supplied by the user via the input file
   std::set<SubdomainID> _blk_ids;
 
-  /// Vector the block names
+  /// Vector the block names supplied by the user via the input file
   std::vector<SubdomainName> _blocks;
 
   /// Flag for allowing dual restriction
@@ -173,9 +179,8 @@ private:
    * A helper function for extracting the subdomain IDs for a variable
    * @param parameters A reference to the input parameters supplied to the object
    */
-  std::set<SubdomainID> variableSubdomianIDs(InputParameters & parameters);
+  std::set<SubdomainID> variableSubdomianIDs(InputParameters & parameters) const;
 
 };
-
 
 #endif // BLOCKRESTRICTABLE_H

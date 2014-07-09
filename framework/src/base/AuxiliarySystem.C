@@ -34,7 +34,10 @@
 AuxiliarySystem::AuxiliarySystem(FEProblem & subproblem, const std::string & name) :
     SystemTempl<TransientExplicitSystem>(subproblem, name, Moose::VAR_AUXILIARY),
     _mproblem(subproblem),
-    _serialized_solution(*NumericVector<Number>::build().release()),
+    _serialized_solution(*NumericVector<Number>::build(_mproblem.comm()).release()),
+    _time_integrator(NULL),
+    _u_dot(addVector("u_dot", true, GHOSTED)),
+    _du_dot_du(addVector("du_dot_du", true, GHOSTED)),
     _need_serialized_solution(false)
 {
   _nodal_vars.resize(libMesh::n_threads());
@@ -44,6 +47,7 @@ AuxiliarySystem::AuxiliarySystem(FEProblem & subproblem, const std::string & nam
 AuxiliarySystem::~AuxiliarySystem()
 {
   delete &_serialized_solution;
+  delete _time_integrator;
 }
 
 void
@@ -56,7 +60,7 @@ AuxiliarySystem::init()
 void
 AuxiliarySystem::initialSetup()
 {
-  for(unsigned int i=0; i<libMesh::n_threads(); i++)
+  for (unsigned int i=0; i<libMesh::n_threads(); i++)
   {
     _auxs(EXEC_RESIDUAL)[i].initialSetup();
     _auxs(EXEC_TIMESTEP)[i].initialSetup();
@@ -67,7 +71,7 @@ AuxiliarySystem::initialSetup()
 void
 AuxiliarySystem::timestepSetup()
 {
-  for(unsigned int i=0; i<libMesh::n_threads(); i++)
+  for (unsigned int i=0; i<libMesh::n_threads(); i++)
   {
     _auxs(EXEC_RESIDUAL)[i].timestepSetup();
     _auxs(EXEC_TIMESTEP)[i].timestepSetup();
@@ -78,14 +82,14 @@ AuxiliarySystem::timestepSetup()
 void
 AuxiliarySystem::residualSetup()
 {
-  for(unsigned int i=0; i<libMesh::n_threads(); i++)
+  for (unsigned int i=0; i<libMesh::n_threads(); i++)
     _auxs(EXEC_RESIDUAL)[i].residualSetup();
 }
 
 void
 AuxiliarySystem::jacobianSetup()
 {
-  for(unsigned int i=0; i<libMesh::n_threads(); i++)
+  for (unsigned int i=0; i<libMesh::n_threads(); i++)
     _auxs(EXEC_RESIDUAL)[i].jacobianSetup();
 }
 
@@ -107,41 +111,40 @@ AuxiliarySystem::addVariable(const std::string & var_name, const FEType & type, 
 }
 
 void
-AuxiliarySystem::addKernel(const  std::string & kernel_name, const std::string & name, InputParameters parameters)
+AuxiliarySystem::addTimeIntegrator(const std::string & type, const std::string & name, InputParameters parameters)
+{
+  parameters.set<SystemBase *>("_sys") = this;
+  TimeIntegrator * ti = static_cast<TimeIntegrator *>(_factory.create(type, name, parameters));
+  if (ti == NULL)
+    mooseError("Not an time integrator object.");
+  _time_integrator = ti;
+}
+
+void
+AuxiliarySystem::addKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters)
 {
   parameters.set<AuxiliarySystem *>("_aux_sys") = this;
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
   {
     parameters.set<THREAD_ID>("_tid") = tid;
-    parameters.set<MaterialData *>("_material_data") = _mproblem._material_data[tid];
 
     AuxKernel *kernel = static_cast<AuxKernel *>(_factory.create(kernel_name, name, parameters));
     mooseAssert(kernel != NULL, "Not an AuxKernel object");
 
-    std::set<SubdomainID> blk_ids;
-    if (!parameters.isParamValid("block"))
-      blk_ids = _var_map[kernel->variable().index()];
-    else
-    {
-      std::vector<SubdomainName> blocks = parameters.get<std::vector<SubdomainName> >("block");
-      for (unsigned int i=0; i<blocks.size(); ++i)
-      {
-        SubdomainID blk_id = _mesh.getSubdomainID(blocks[i]);
-
-        if (_var_map[kernel->variable().index()].count(blk_id) > 0 || _var_map[kernel->variable().index()].size() == 0)
-          blk_ids.insert(blk_id);
-        else
-          mooseError("AuxKernel (" + kernel->name() + "): block outside of the domain of the variable");
-      }
-    }
-
-    _auxs(kernel->execFlag())[tid].addAuxKernel(kernel, blk_ids);
+    _auxs(kernel->execFlag())[tid].addAuxKernel(kernel);
     _mproblem._objects_by_name[tid][name].push_back(kernel);
+
+    if (kernel->boundaryRestricted())
+    {
+      const std::set<BoundaryID> & boundary_ids = kernel->boundaryIDs();
+      for (std::set<BoundaryID>::const_iterator it = boundary_ids.begin(); it != boundary_ids.end(); ++it)
+        _vars[tid].addBoundaryVar(*it, &kernel->variable());
+    }
   }
 }
 
 void
-AuxiliarySystem::addScalarKernel(const  std::string & kernel_name, const std::string & name, InputParameters parameters)
+AuxiliarySystem::addScalarKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters)
 {
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
   {
@@ -151,34 +154,8 @@ AuxiliarySystem::addScalarKernel(const  std::string & kernel_name, const std::st
     mooseAssert(kernel != NULL, "Not a AuxScalarKernel object");
 
     _auxs(kernel->execFlag())[tid].addScalarKernel(kernel);
+
     _mproblem._objects_by_name[tid][name].push_back(kernel);
-  }
-}
-
-void
-AuxiliarySystem::addBoundaryCondition(const std::string & bc_name, const std::string & name, InputParameters parameters)
-{
-  parameters.set<AuxiliarySystem *>("_aux_sys") = this;
-  std::vector<BoundaryName> boundaries = parameters.get<std::vector<BoundaryName> >("boundary");
-
-  for (unsigned int i=0; i<boundaries.size(); ++i)
-  {
-    BoundaryID boundary = _mesh.getBoundaryID(boundaries[i]);
-    parameters.set<BoundaryID>("_boundary_id") = boundary;
-
-    for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
-    {
-      parameters.set<THREAD_ID>("_tid") = tid;
-      parameters.set<MaterialData *>("_material_data") = _mproblem._bnd_material_data[tid];
-
-      AuxKernel * bc = static_cast<AuxKernel *>(_factory.create(bc_name, name, parameters));
-      mooseAssert(bc != NULL, "Not a AuxBoundaryCondition object");
-
-      _auxs(bc->execFlag())[tid].addActiveBC(boundary, bc);
-      _mproblem._objects_by_name[tid][name].push_back(bc);
-
-      _vars[tid].addBoundaryVar(boundary, &bc->variable());
-    }
   }
 }
 
@@ -218,6 +195,18 @@ AuxiliarySystem::reinitElemFace(const Elem * /*elem*/, unsigned int /*side*/, Bo
 }
 
 NumericVector<Number> &
+AuxiliarySystem::solutionUDot()
+{
+  return _u_dot;
+}
+
+NumericVector<Number> &
+AuxiliarySystem::solutionDuDotDu()
+{
+  return _du_dot_du;
+}
+
+NumericVector<Number> &
 AuxiliarySystem::serializedSolution()
 {
   _need_serialized_solution = true;
@@ -235,25 +224,21 @@ void
 AuxiliarySystem::compute(ExecFlagType type/* = EXEC_RESIDUAL*/)
 {
   if (_vars[0].scalars().size() > 0)
-  {
     computeScalarVars(_auxs(type));
-    solution().close();
-    _sys.update();
-  }
 
   if (_vars[0].variables().size() > 0)
   {
     computeNodalVars(_auxs(type));
-    solution().close();
-    _sys.update();
-
     computeElementalVars(_auxs(type));
-    solution().close();
-    _sys.update();
 
     if (_need_serialized_solution)
       serializeSolution();
   }
+
+  // can compute time derivatives _after_ the current values were updated
+  // also, at the very beginning, avoid division by dt which might be zero.
+  if (_mproblem.dt() > 0.)
+    _time_integrator->computeTimeDerivatives();
 }
 
 std::set<std::string>
@@ -309,6 +294,9 @@ AuxiliarySystem::computeScalarVars(std::vector<AuxWarehouse> & auxs)
   }
   PARALLEL_CATCH;
   Moose::perf_log.pop("update_aux_vars_scalar()","Solve");
+
+  solution().close();
+  _sys.update();
 }
 
 void
@@ -316,7 +304,7 @@ AuxiliarySystem::computeNodalVars(std::vector<AuxWarehouse> & auxs)
 {
   // Do we have some kernels to evaluate?
   bool have_block_kernels = false;
-  for(std::set<SubdomainID>::const_iterator subdomain_it = _mesh.meshSubdomains().begin();
+  for (std::set<SubdomainID>::const_iterator subdomain_it = _mesh.meshSubdomains().begin();
       subdomain_it != _mesh.meshSubdomains().end();
       ++subdomain_it)
   {
@@ -325,11 +313,14 @@ AuxiliarySystem::computeNodalVars(std::vector<AuxWarehouse> & auxs)
 
   Moose::perf_log.push("update_aux_vars_nodal()","Solve");
   PARALLEL_TRY {
-    if (auxs[0].activeNodalKernels().size() > 0 || have_block_kernels)
+    if (have_block_kernels)
     {
       ConstNodeRange & range = *_mesh.getLocalNodeRange();
       ComputeNodalAuxVarsThread navt(_mproblem, *this, auxs);
       Threads::parallel_reduce(range, navt);
+
+      solution().close();
+      _sys.update();
     }
   }
   PARALLEL_CATCH;
@@ -342,6 +333,9 @@ AuxiliarySystem::computeNodalVars(std::vector<AuxWarehouse> & auxs)
     ConstBndNodeRange & bnd_nodes = *_mesh.getBoundaryNodeRange();
     ComputeNodalAuxBcsThread nabt(_mproblem, *this, auxs);
     Threads::parallel_reduce(bnd_nodes, nabt);
+
+    solution().close();
+    _sys.update();
   }
   PARALLEL_CATCH;
   Moose::perf_log.pop("update_aux_vars_nodal_bcs()","Solve");
@@ -354,7 +348,7 @@ AuxiliarySystem::computeElementalVars(std::vector<AuxWarehouse> & auxs)
   PARALLEL_TRY {
     bool element_auxs_to_compute = false;
 
-    for(unsigned int i=0; i<auxs.size(); i++)
+    for (unsigned int i=0; i<auxs.size(); i++)
       element_auxs_to_compute |= auxs[i].allElementKernels().size();
 
     if (element_auxs_to_compute)
@@ -362,16 +356,22 @@ AuxiliarySystem::computeElementalVars(std::vector<AuxWarehouse> & auxs)
       ConstElemRange & range = *_mesh.getActiveLocalElementRange();
       ComputeElemAuxVarsThread eavt(_mproblem, *this, auxs);
       Threads::parallel_reduce(range, eavt);
+
+      solution().close();
+      _sys.update();
     }
 
     bool bnd_auxs_to_compute = false;
-    for(unsigned int i=0; i<auxs.size(); i++)
+    for (unsigned int i=0; i<auxs.size(); i++)
       bnd_auxs_to_compute |= auxs[i].allElementalBCs().size();
     if (bnd_auxs_to_compute)
     {
       ConstBndElemRange & bnd_elems = *_mesh.getBoundaryElementRange();
       ComputeElemAuxBcsThread eabt(_mproblem, *this, auxs);
       Threads::parallel_reduce(bnd_elems, eabt);
+
+      solution().close();
+      _sys.update();
     }
 
   }
@@ -402,4 +402,15 @@ AuxiliarySystem::getMinQuadratureOrder()
   }
 
   return order;
+}
+
+bool
+AuxiliarySystem::needMaterialOnSide(BoundaryID bnd_id)
+{
+  for (unsigned int i=0; i < Moose::exec_types.size(); ++i)
+    if (!_auxs(Moose::exec_types[i])[0].activeBCs(bnd_id).empty() ||
+        !_auxs(Moose::exec_types[i])[0].activeBCs(Moose::ANY_BOUNDARY_ID).empty())
+      return true;
+
+  return false;
 }

@@ -27,6 +27,7 @@
 #include <iterator>
 
 #include "libmesh/periodic_boundaries.h"
+
 //Forward Declarations
 class NodalFloodCount;
 class MooseMesh;
@@ -73,7 +74,7 @@ protected:
     BubbleData(std::set<unsigned int> & nodes, unsigned int var_idx) :
         _nodes(nodes),
         _var_idx(var_idx)
-      {}
+    {}
 
     std::set<unsigned int> _nodes;
     unsigned int _var_idx;
@@ -105,12 +106,6 @@ protected:
    * any bubbles that were counted as unique by multiple processors.
    */
   void mergeSets();
-
-  /**
-   * This routine returns whether or not a nodal value is valid on a particular processor
-   * (i.e. includes values owned by this processor and ghost nodes)
-   */
-  bool isNodeValueValid(unsigned int node_id) const;
 
   /**
    * This routine adds the periodic node information to our data structure prior to packing the data
@@ -286,7 +281,7 @@ template <class T>
 void
 NodalFloodCount::writeCSVFile(const std::string file_name, const std::vector<T> data)
 {
-  if (libMesh::processor_id() == 0)
+  if (processor_id() == 0)
   {
     std::map<std::string, std::ofstream *>::iterator handle_it = _file_handles.find(file_name);
     if (handle_it == _file_handles.end())
@@ -304,4 +299,4 @@ NodalFloodCount::writeCSVFile(const std::string file_name, const std::vector<T> 
 }
 
 
-#endif
+#endif //NODALFLOODCOUNT_H

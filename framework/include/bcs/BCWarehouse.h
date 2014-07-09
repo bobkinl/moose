@@ -46,15 +46,22 @@ public:
   /**
    * Get boundary conditions on a specified boundary id
    */
-  std::vector<IntegratedBC *> & getBCs(BoundaryID boundary_id);
+  const std::vector<IntegratedBC *> & getBCs(BoundaryID boundary_id) const;
+
+  /**
+   * Check for the existence of nodal bcs for the specified boundary
+   */
+  bool hasNodalBCs(BoundaryID boundary_id) const { return _nodal_bcs.find(boundary_id) != _nodal_bcs.end(); }
+
   /**
    * Get nodal boundary conditions on a specified boundary id
    */
-  std::vector<NodalBC *> & getNodalBCs(BoundaryID boundary_id);
+  const std::vector<NodalBC *> & getNodalBCs(BoundaryID boundary_id) const;
+
   /**
    * Get presetting (;-)) nodal boundary conditions on a specified boundary id
    */
-  std::vector<PresetNodalBC *> & getPresetNodalBCs(BoundaryID boundary_id);
+  const std::vector<PresetNodalBC *> & getPresetNodalBCs(BoundaryID boundary_id) const;
 
   /**
    * Get list of active boundaries
@@ -65,23 +72,23 @@ public:
   /**
    * Get active integrated boundary conditions
    * @param boundary_id Boundary ID
-   * @return Set of active integrated BCs
+   * @param active_integrated A vector to populate with the active integrated bcs
    */
-  std::vector<IntegratedBC *> activeIntegrated(BoundaryID boundary_id);
+  void activeIntegrated(BoundaryID boundary_id, std::vector<IntegratedBC *> & active_integrated) const;
 
   /**
    * Get active nodal boundary conditions
    * @param boundary_id Boundary ID
-   * @return Set of active nodal BCs
+   * @param active_nodal A vector to populate with the active nodal bcs
    */
-  std::vector<NodalBC *> activeNodal(BoundaryID boundary_id);
+  void activeNodal(BoundaryID boundary_id, std::vector<NodalBC *> & active_nodal) const;
 
   /**
    * Get active preset nodal boundary conditions
    * @param boundary_id Boundary ID
-   * @return Set of active preset nodal BCs
+   * @param active_preset A vector to populate with the active preset bcs
    */
-  std::vector<PresetNodalBC *> activePresetNodal(BoundaryID boundary_id);
+  void activePresetNodal(BoundaryID boundary_id, std::vector<PresetNodalBC *> & active_preset) const;
 
 protected:
   /// integrated boundary conditions on a boundary

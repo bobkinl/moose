@@ -19,13 +19,13 @@
 []
 
 [GlobalParams]
-  porepressureNames_UO = PPNames
+  richardsVarNames_UO = PPNames
 []
 
 [UserObjects]
   [./PPNames]
-    type = RichardsPorepressureNames
-    porepressure_vars = pressure
+    type = RichardsVarNames
+    richards_vars = pressure
   [../]
   [./DensityConstBulk]
     type = RichardsDensityConstBulk
@@ -77,7 +77,6 @@
     fluxes = '1E5 2E10 -1E10 1E5' # outer ones can't be too big otherwise PETSc's constant state finite-differencing loses precision
     point_file = jn40.stream
     SumQuantityUO = stream_total_outflow_mass
-    mesh_adaptivity = false
     variable = pressure
   [../]
 []

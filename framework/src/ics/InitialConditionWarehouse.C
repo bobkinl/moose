@@ -1,3 +1,16 @@
+/****************************************************************/
+/*               DO NOT MODIFY THIS HEADER                      */
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*           (c) 2010 Battelle Energy Alliance, LLC             */
+/*                   ALL RIGHTS RESERVED                        */
+/*                                                              */
+/*          Prepared by Battelle Energy Alliance, LLC           */
+/*            Under Contract No. DE-AC07-05ID14517              */
+/*            With the U. S. Department of Energy               */
+/*                                                              */
+/*            See COPYRIGHT for full restrictions               */
+/****************************************************************/
 #include "InitialConditionWarehouse.h"
 #include "InitialCondition.h"
 #include "ScalarInitialCondition.h"
@@ -48,15 +61,26 @@ InitialConditionWarehouse::updateActiveICs(SubdomainID subdomain)
 }
 
 const std::vector<InitialCondition *> &
-InitialConditionWarehouse::active()
+InitialConditionWarehouse::active() const
 {
   return _active_ics;
 }
 
-const std::vector<InitialCondition *> &
-InitialConditionWarehouse::activeBoundary(BoundaryID boundary_id)
+bool
+InitialConditionWarehouse::hasActiveBoundaryICs(BoundaryID boundary_id) const
 {
-  return _active_boundary_ics[boundary_id];
+  return _active_boundary_ics.find(boundary_id) != _active_boundary_ics.end();
+}
+
+const std::vector<InitialCondition *> &
+InitialConditionWarehouse::activeBoundary(BoundaryID boundary_id) const
+{
+  std::map<BoundaryID, std::vector<InitialCondition *> >::const_iterator it = _active_boundary_ics.find(boundary_id);
+
+  if (it == _active_boundary_ics.end())
+    mooseError("No active boundary ICs on boudnary: " << boundary_id);
+
+  return it->second;
 }
 
 void
@@ -91,7 +115,7 @@ InitialConditionWarehouse::addBoundaryInitialCondition(const std::string & var_n
 }
 
 const std::vector<ScalarInitialCondition *> &
-InitialConditionWarehouse::activeScalar()
+InitialConditionWarehouse::activeScalar() const
 {
   return _active_scalar_ics;
 }

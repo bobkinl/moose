@@ -48,8 +48,9 @@
     es = out_0001.xda
     system = AuxiliarySystem
     nodal_variables = u_aux
-    coord_scale = '3 2 1'
-    coord_factor = '1 1 0'
+    scale = '3 2 1'
+    translation = '1 1 0'
+    legacy_read = true
   [../]
 []
 

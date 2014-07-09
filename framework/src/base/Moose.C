@@ -36,11 +36,13 @@
 #include "SideSetsAroundSubdomain.h"
 #include "SideSetsBetweenSubdomains.h"
 #include "AddAllSideSetsByNormals.h"
+#include "SubdomainBoundingBox.h"
+#include "OrientedSubdomainBoundingBox.h"
 
 // problems
 #include "FEProblem.h"
-#include "OutputProblem.h"
 #include "CoupledProblem.h"
+
 // kernels
 #include "TimeDerivative.h"
 #include "Diffusion.h"
@@ -50,6 +52,7 @@
 #include "BodyForce.h"
 #include "Reaction.h"
 #include "RealPropertyOutput.h"
+#include "MassEigenKernel.h"
 
 // bcs
 #include "ConvectiveFluxBC.h"
@@ -76,6 +79,8 @@
 #include "SelfAux.h"
 #include "GapValueAux.h"
 #include "MaterialRealAux.h"
+#include "MaterialRealVectorValueAux.h"
+#include "MaterialRealTensorValueAux.h"
 #include "DebugResidualAux.h"
 #include "BoundsAux.h"
 #include "SpatialUserObjectAux.h"
@@ -83,6 +88,7 @@
 #include "VectorMagnitudeAux.h"
 #include "ConstantScalarAux.h"
 #include "QuotientAux.h"
+#include "NormalizationAux.h"
 
 // dirac kernels
 #include "ConstantPointSource.h"
@@ -101,6 +107,8 @@
 // executioners
 #include "Steady.h"
 #include "Transient.h"
+#include "InversePowerMethod.h"
+#include "NonlinearEigen.h"
 #include "PetscTSExecutioner.h"
 #include "CoupledTransientExecutioner.h"
 
@@ -132,6 +140,7 @@
 #include "ElementIntegralVariablePostprocessor.h"
 #include "ElementIntegralMaterialProperty.h"
 #include "ElementL2Error.h"
+#include "ElementVectorL2Error.h"
 #include "EmptyPostprocessor.h"
 #include "NodalVariableValue.h"
 
@@ -143,6 +152,7 @@
 #include "NumNodes.h"
 #include "NumNonlinearIterations.h"
 #include "NumLinearIterations.h"
+#include "ProblemRealParameter.h"
 #include "Residual.h"
 #include "ScalarVariable.h"
 #include "NumVars.h"
@@ -165,6 +175,15 @@
 #include "AreaPostprocessor.h"
 #include "PointValue.h"
 #include "NodalExtremeValue.h"
+#include "ElementExtremeValue.h"
+#include "DifferencePostprocessor.h"
+
+// vector PPS
+#include "ConstantVectorPostprocessor.h"
+#include "NodalValueSampler.h"
+#include "SideValueSampler.h"
+#include "PointValueSampler.h"
+#include "LineValueSampler.h"
 
 // user objects
 #include "LayeredIntegral.h"
@@ -198,17 +217,18 @@
 
 // Constraints
 #include "TiedValueConstraint.h"
+#include "CoupledTiedValueConstraint.h"
 #include "AddBoundsVectorsAction.h"
 #include "EqualValueConstraint.h"
 
 // ScalarKernels
 #include "ODETimeDerivative.h"
+#include "FunctionScalarAux.h"
 
 // indicators
 #include "AnalyticalIndicator.h"
 #include "LaplacianJumpIndicator.h"
 #include "GradientJumpIndicator.h"
-#include "FluxJumpIndicator.h"
 
 // markers
 #include "ErrorToleranceMarker.h"
@@ -273,9 +293,11 @@
 #include "AddVariableAction.h"
 #include "AddAuxVariableAction.h"
 #include "AddPostprocessorAction.h"
+#include "AddVectorPostprocessorAction.h"
 #include "AddDamperAction.h"
 #include "AddFunctionAction.h"
 #include "CreateExecutionerAction.h"
+#include "DetermineSystemType.h"
 #include "SetupTimePeriodsAction.h"
 #include "EmptyAction.h"
 #include "InitProblemAction.h"
@@ -283,8 +305,6 @@
 #include "SetupMeshAction.h"
 #include "AddMeshModifierAction.h"
 #include "SetupMeshCompleteAction.h"
-#include "SetupOutputNameAction.h" /// \todo{remove w/ update system upgraded}
-#include "SetupOutputAction.h" /// \todo{remove w/ update system upgraded}
 #include "AddOutputAction.h"
 #include "CommonOutputAction.h"
 #include "AddMaterialAction.h"
@@ -296,7 +316,6 @@
 #include "SetupPreconditionerAction.h"
 #include "SetupDebugAction.h"
 #include "SetupResidualDebugAction.h"
-#include "SetupOverSamplingAction.h"
 #include "DeprecatedBlockAction.h"
 #include "AddConstraintAction.h"
 #include "InitDisplacedProblemAction.h"
@@ -312,24 +331,26 @@
 #include "AddTransferAction.h"
 #include "AddNodalNormalsAction.h"
 #include "SetupTimeStepperAction.h"
-#include "RecoverBaseAction.h"
 #include "SetupPredictorAction.h"
 #include "AddMortarInterfaceAction.h"
 #include "SetupPostprocessorDataAction.h"
-
+#include "MaterialOutputAction.h"
+#include "CheckOutputAction.h"
+#include "SetupRecoverFileBaseAction.h"
 
 // Outputs
 #include "Exodus.h"
 #include "Nemesis.h"
 #include "Console.h"
 #include "CSV.h"
-#include "VTK.h"
+#include "VTKOutput.h"
 #include "Checkpoint.h"
 #include "XDA.h"
-#include "GMVOutputter.h"
+#include "GMVOutput.h"
 #include "Tecplot.h"
-#include "GNUPlot.h"
+#include "Gnuplot.h"
 #include "SolutionHistory.h"
+#include "DebugOutput.h"
 
 namespace Moose {
 
@@ -352,10 +373,11 @@ registerObjects(Factory & factory)
   registerMeshModifier(SideSetsAroundSubdomain);
   registerMeshModifier(SideSetsBetweenSubdomains);
   registerMeshModifier(AddAllSideSetsByNormals);
+  registerMeshModifier(SubdomainBoundingBox);
+  registerMeshModifier(OrientedSubdomainBoundingBox);
 
   // problems
   registerProblem(FEProblem);
-  registerProblem(OutputProblem);
   registerProblem(CoupledProblem);
 
   // kernels
@@ -367,6 +389,7 @@ registerObjects(Factory & factory)
   registerKernel(BodyForce);
   registerKernel(Reaction);
   registerKernel(RealPropertyOutput);
+  registerKernel(MassEigenKernel);
 
   // bcs
   registerBoundaryCondition(ConvectiveFluxBC);
@@ -398,6 +421,8 @@ registerObjects(Factory & factory)
   registerAux(SelfAux);
   registerAux(GapValueAux);
   registerAux(MaterialRealAux);
+  registerAux(MaterialRealVectorValueAux);
+  registerAux(MaterialRealTensorValueAux);
   registerAux(DebugResidualAux);
   registerAux(BoundsAux);
   registerAux(SpatialUserObjectAux);
@@ -405,6 +430,8 @@ registerObjects(Factory & factory)
   registerAux(VectorMagnitudeAux);
   registerAux(ConstantScalarAux);
   registerAux(QuotientAux);
+  registerAux(NormalizationAux);
+  registerAux(FunctionScalarAux);
 
   // Initial Conditions
   registerInitialCondition(ConstantIC);
@@ -417,6 +444,8 @@ registerObjects(Factory & factory)
   // executioners
   registerExecutioner(Steady);
   registerExecutioner(Transient);
+  registerExecutioner(InversePowerMethod);
+  registerExecutioner(NonlinearEigen);
   registerExecutioner(CoupledTransientExecutioner);
 #if defined(LIBMESH_HAVE_PETSC) && !PETSC_VERSION_LESS_THAN(3,4,0)
 #if 0 // This seems to be broken right now -- doesn't work wiith petsc >= 3.4 either
@@ -453,6 +482,7 @@ registerObjects(Factory & factory)
   registerPostprocessor(ElementIntegralVariablePostprocessor);
   registerPostprocessor(ElementIntegralMaterialProperty);
   registerPostprocessor(ElementL2Error);
+  registerPostprocessor(ElementVectorL2Error);
   registerPostprocessor(ScalarL2Error);
   registerPostprocessor(EmptyPostprocessor);
   registerPostprocessor(NodalVariableValue);
@@ -464,6 +494,7 @@ registerObjects(Factory & factory)
   registerPostprocessor(NumNodes);
   registerPostprocessor(NumNonlinearIterations);
   registerPostprocessor(NumLinearIterations);
+  registerPostprocessor(ProblemRealParameter);
   registerPostprocessor(Residual);
   registerPostprocessor(ScalarVariable);
   registerPostprocessor(NumVars);
@@ -485,6 +516,15 @@ registerObjects(Factory & factory)
   registerPostprocessor(AreaPostprocessor);
   registerPostprocessor(PointValue);
   registerPostprocessor(NodalExtremeValue);
+  registerPostprocessor(ElementExtremeValue);
+  registerPostprocessor(DifferencePostprocessor);
+
+  // vector PPS
+  registerVectorPostprocessor(ConstantVectorPostprocessor);
+  registerVectorPostprocessor(NodalValueSampler);
+  registerVectorPostprocessor(SideValueSampler);
+  registerVectorPostprocessor(PointValueSampler);
+  registerVectorPostprocessor(LineValueSampler);
 
   // user objects
   registerUserObject(LayeredIntegral);
@@ -515,6 +555,7 @@ registerObjects(Factory & factory)
 
   // Constraints
   registerConstraint(TiedValueConstraint);
+  registerConstraint(CoupledTiedValueConstraint);
   registerConstraint(EqualValueConstraint);
 
   // Scalar kernels
@@ -524,7 +565,6 @@ registerObjects(Factory & factory)
   registerIndicator(AnalyticalIndicator);
   registerIndicator(LaplacianJumpIndicator);
   registerIndicator(GradientJumpIndicator);
-  registerIndicator(FluxJumpIndicator);
 
   // markers
   registerMarker(ErrorToleranceMarker);
@@ -581,18 +621,25 @@ registerObjects(Factory & factory)
   registerTransfer(MultiAppPostprocessorToAuxScalarTransfer);
 
   // Outputs
+#ifdef LIBMESH_HAVE_EXODUS_API
   registerOutput(Exodus);
+#endif
+#ifdef LIBMESH_HAVE_NEMESIS_API
   registerOutput(Nemesis);
+#endif
   registerOutput(Console);
   registerOutput(CSV);
-  registerNamedOutput(VTKOutputter, "VTK");
+#ifdef LIBMESH_HAVE_VTK
+  registerNamedOutput(VTKOutput, "VTK");
+#endif
   registerOutput(Checkpoint);
   registerNamedOutput(XDA, "XDR");
   registerOutput(XDA);
-  registerNamedOutput(GMVOutputter, "GMV");
+  registerNamedOutput(GMVOutput, "GMV");
   registerOutput(Tecplot);
-  registerOutput(GNUPlot);
+  registerOutput(Gnuplot);
   registerOutput(SolutionHistory);
+  registerOutput(DebugOutput);
 
   registered = true;
 }
@@ -605,7 +652,7 @@ addActionTypes(Syntax & syntax)
    * If set to true, then the ActionWarehouse will attempt to create "Action"s automatically if they have
    * not been explicitly created by the parser or some other mechanism.
    *
-   * Note: Many of the actions in the "Mimimal Problem" section are marked as false.  However, we can generally
+   * Note: Many of the actions in the "Minimal Problem" section are marked as false.  However, we can generally
    * force creation of these "Action"s as needed by registering them to syntax that we expect to see even
    * if those "Action"s  don't normally pick up parameters from the input file.
    */
@@ -616,16 +663,21 @@ addActionTypes(Syntax & syntax)
   registerMooseObjectTask("create_problem",               Problem,                 true);
   registerMooseObjectTask("setup_executioner",            Executioner,             true);
 
+  // This task does not construct an object, but it needs all of the parameters that
+  // would normally be used to construct an object.
+  registerMooseObjectTask("determine_system_type",        Executioner,             true);
+
   registerMooseObjectTask("setup_mesh",                   MooseMesh,              false);
   registerMooseObjectTask("add_mesh_modifier",            MeshModifier,           false);
 
   registerMooseObjectTask("add_kernel",                   Kernel,                 false);
+  appendMooseObjectTask  ("add_kernel",                   EigenKernel);
+
   registerMooseObjectTask("add_material",                 Material,               false);
   registerMooseObjectTask("add_bc",                       BoundaryCondition,      false);
   registerMooseObjectTask("add_function",                 Function,               false);
 
   registerMooseObjectTask("add_aux_kernel",               AuxKernel,              false);
-  registerMooseObjectTask("add_aux_bc",                   AuxKernel,              false);
   registerMooseObjectTask("add_elemental_field_variable", AuxKernel,              false);
   registerMooseObjectTask("add_coupled_variable",         AuxKernel,              false);
 
@@ -648,6 +700,7 @@ addActionTypes(Syntax & syntax)
   registerMooseObjectTask("add_user_object",              UserObject,             false);
   appendMooseObjectTask  ("add_user_object",              Postprocessor);
   registerMooseObjectTask("add_postprocessor",            Postprocessor,          false);
+  registerMooseObjectTask("add_vector_postprocessor",     VectorPostprocessor,    false);
 
   registerMooseObjectTask("add_indicator",                Indicator,              false);
   registerMooseObjectTask("add_marker",                   Marker,                 false);
@@ -655,21 +708,21 @@ addActionTypes(Syntax & syntax)
   registerMooseObjectTask("add_multi_app",                MultiApp,               false);
   registerMooseObjectTask("add_transfer",                 Transfer,               false);
 
-  registerMooseObjectTask("add_output",                   OutputBase,             false);
+  registerMooseObjectTask("add_output",                   Output,                 false);
+
+  registerTask("common_output", true);
+  registerTask("setup_recover_file_base", true);
 
   registerTask("add_feproblem", false);
   registerTask("add_bounds_vectors", false);
   registerTask("add_periodic_bc", false);
   registerTask("add_aux_variable", false);
   registerTask("add_variable", false);
-  registerTask("recover_base", false);
 
   registerTask("prepare_mesh", false);
   registerTask("setup_mesh_complete", false);  // calls prepare
 
   registerTask("init_displaced_problem", false);
-  registerTask("setup_output", false);
-  registerTask("setup_output_name", true);
 
   registerTask("init_problem", true);
   registerTask("check_copy_nodal_vars", true);
@@ -699,7 +752,10 @@ addActionTypes(Syntax & syntax)
   registerTask("setup_function_complete", false);
   registerTask("setup_variable_complete", false);
   registerTask("ready_to_init", true);
-  registerTask("setup_pps_complete", false);
+
+  // Output related actions
+  registerTask("setup_material_output", true);
+  registerTask("check_output", true);
 
   /**************************/
   /****** Dependencies ******/
@@ -714,14 +770,16 @@ addActionTypes(Syntax & syntax)
    */
   syntax.addDependencySets(
 "(meta_action)"
+"(common_output)"
 "(set_global_params)"
-"(recover_base)"
+"(setup_recover_file_base)"
 "(check_copy_nodal_vars)"
 "(setup_mesh)"
 "(prepare_mesh)"
 "(add_mesh_modifier)"
 "(add_mortar_interface)"
 "(setup_mesh_complete)"
+"(determine_system_type)"
 "(create_problem)"
 "(setup_executioner)"
 "(setup_time_stepper)"
@@ -746,19 +804,19 @@ addActionTypes(Syntax & syntax)
 "(setup_dampers)"
 "(setup_residual_debug)"
 "(add_bounds_vectors)"
-"(setup_output_name)"
 "(add_multi_app)"
 "(add_transfer)"
-"(init_problem)"
 "(copy_nodal_vars, copy_nodal_aux_vars)"
 "(initial_mesh_refinement)"
 "(add_material)"
-"(add_postprocessor)"
-"(setup_pps_complete)"
-"(add_aux_bc, add_aux_kernel, add_bc, add_damper, add_dirac_kernel, add_kernel, add_dg_kernel, add_scalar_kernel, add_aux_scalar_kernel, add_indicator, add_marker, add_output)"
-"(setup_output)"
-"(setup_oversampling)"
+"(setup_material_output)"
+"(init_problem)"
 "(setup_debug)"
+"(add_output)"
+"(add_postprocessor)"
+"(add_vector_postprocessor)"
+"(add_aux_kernel, add_bc, add_damper, add_dirac_kernel, add_kernel, add_dg_kernel, add_scalar_kernel, add_aux_scalar_kernel, add_indicator, add_marker)"
+"(check_output)"
 "(check_integrity)"
 );
 
@@ -766,8 +824,7 @@ addActionTypes(Syntax & syntax)
 
 /**
  * Multiple Action class can be associated with a single input file section, in which case all associated Actions
- * will be created and "acted" on when the associated input file section is seen.
- *
+ * will be created and "acted" on when the associated input file section is seen.b *
  * Example:
  *  "setup_mesh" <-----------> SetupMeshAction <---------
  *                                                        \
@@ -796,7 +853,6 @@ registerActions(Syntax & syntax, ActionFactory & action_factory)
 {
   registerAction(SetupPostprocessorDataAction, "setup_postprocessor_data");
 
-  registerAction(RecoverBaseAction, "recover_base");
   registerAction(SetupMeshAction, "setup_mesh");
   registerAction(SetupMeshCompleteAction, "prepare_mesh");
   registerAction(AddMeshModifierAction, "add_mesh_modifier");
@@ -808,13 +864,15 @@ registerActions(Syntax & syntax, ActionFactory & action_factory)
   registerAction(SetupTimeStepperAction, "setup_time_stepper");
   registerAction(SetupTimePeriodsAction, "setup_time_periods");
   registerAction(InitDisplacedProblemAction, "init_displaced_problem");
+  registerAction(DetermineSystemType, "determine_system_type");
   registerAction(CreateProblemAction, "create_problem");
-  registerAction(SetupOutputAction, "setup_output"); /// \todo{remove w/ update system upgraded}
-  registerAction(SetupOutputNameAction, "setup_output_name"); /// \todo{remove w/ update system upgraded}
   registerAction(AddOutputAction, "add_output");
-  registerAction(CommonOutputAction, "meta_action");
+  registerAction(CommonOutputAction, "common_output");
+  registerAction(SetupRecoverFileBaseAction, "setup_recover_file_base");
   registerAction(GlobalParamsAction, "set_global_params");
   registerAction(SetupPredictorAction, "setup_predictor");
+  registerAction(MaterialOutputAction, "setup_material_output");
+  registerAction(CheckOutputAction, "check_output");
 
   /// Variable/AuxVariable Actions
   registerAction(AddVariableAction, "add_variable");
@@ -839,14 +897,13 @@ registerActions(Syntax & syntax, ActionFactory & action_factory)
   registerAction(AddBCAction, "add_bc");
   registerAction(EmptyAction, "no_action");  // placeholder
   registerAction(AddPeriodicBCAction, "add_periodic_bc");
-  registerAction(AddBCAction, "add_aux_bc");
   registerAction(AddMaterialAction, "add_material");
   registerAction(AddPostprocessorAction, "add_postprocessor");
+  registerAction(AddVectorPostprocessorAction, "add_vector_postprocessor");
   registerAction(AddDamperAction, "add_damper");
   registerAction(AddSplitAction, "add_split");
   registerAction(SetupPreconditionerAction, "add_preconditioning");
   registerAction(SetupQuadratureAction, "setup_quadrature");
-  registerAction(SetupOverSamplingAction, "setup_oversampling");
   registerAction(DeprecatedBlockAction, "deprecated_block");
   registerAction(AddConstraintAction, "add_constraint");
   registerAction(AddUserObjectAction, "add_user_object");
@@ -900,25 +957,11 @@ setSolverDefaults(FEProblem & problem)
 MPI_Comm
 swapLibMeshComm(MPI_Comm new_comm)
 {
-  int ierr;
-
-  MPI_Comm old_comm = libMesh::COMM_WORLD;
-  libMesh::COMM_WORLD = new_comm;
-  libMesh::CommWorld = new_comm;
 #ifdef LIBMESH_HAVE_PETSC
+  MPI_Comm old_comm = PETSC_COMM_WORLD;
   PETSC_COMM_WORLD = new_comm;
-#endif //LIBMESH_HAVE_PETSC
-
-  int pid;
-  ierr = MPI_Comm_rank(new_comm, &pid); mooseCheckMPIErr(ierr);
-
-  int n_procs;
-  ierr = MPI_Comm_size(new_comm, &n_procs); mooseCheckMPIErr(ierr);
-
-  libMesh::libMeshPrivateData::_processor_id = pid;
-  libMesh::libMeshPrivateData::_n_processors = n_procs;
-
   return old_comm;
+#endif //LIBMESH_HAVE_PETSC
 }
 
 void
@@ -932,8 +975,26 @@ enableFPE(bool on)
 #endif
 }
 
+// Currently there are 6 exec types (See Moose.h)
+const std::vector<ExecFlagType> populateExecTypes()
+{
+  std::vector<ExecFlagType> exec_types(6);
+  exec_types[0] = EXEC_INITIAL;
+  exec_types[1] = EXEC_TIMESTEP_BEGIN;
+  exec_types[2] = EXEC_JACOBIAN;
+  exec_types[3] = EXEC_RESIDUAL;
+  exec_types[4] = EXEC_TIMESTEP;
+  exec_types[5] = EXEC_CUSTOM;
+
+  return exec_types;
+}
+
+const std::vector<ExecFlagType> exec_types = populateExecTypes();
+
 PerfLog setup_perf_log("Setup");
 
 bool __trap_fpe = false;
+
+bool __color_console = true;
 
 } // namespace Moose

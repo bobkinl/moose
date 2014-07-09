@@ -73,10 +73,8 @@ public:
   template<typename T>
   MaterialProperty<T> & declarePropertyOlder(const std::string & prop_name);
 
-  /* Non-templated property routines */
-  bool have_property_name(const std::string & prop_name) const;
-  bool have_property_name_old(const std::string & prop_name) const;
-  bool have_property_name_older(const std::string & prop_name) const;
+  //copy material properties from one element to another
+  void copy(const Elem & elem_to, const Elem & elem_from, unsigned int side);
 
   // material properties for given element (and possible side)
   void swap(const Elem & elem, unsigned int side = 0);
@@ -98,7 +96,6 @@ public:
   template <typename T>
   bool havePropertyOlder(const std::string & prop_name) const;
 
-
   template <typename T>
   MaterialProperty<T> & getProperty(const std::string & prop_name);
 
@@ -112,6 +109,11 @@ public:
    * \return Returns true of the stateful material is swapped
    */
   bool isSwapped();
+
+  /**
+   * Provide read-only access to the underlying MaterialPropertyStorage object.
+   */
+  const MaterialPropertyStorage & getMaterialPropertyStorage() const { return _storage; }
 
 protected:
 
@@ -131,7 +133,6 @@ protected:
   bool _swapped;
 
 };
-
 
 template <typename T>
 inline bool
@@ -154,6 +155,7 @@ template <typename T>
 inline bool
 MaterialData::havePropertyOld (const std::string & prop_name) const
 {
+
   if (!_storage.hasProperty(prop_name))
     return false;
 

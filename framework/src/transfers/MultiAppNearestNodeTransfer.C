@@ -34,7 +34,7 @@ InputParameters validParams<MultiAppNearestNodeTransfer>()
   params.addRequiredParam<VariableName>("source_variable", "The variable to transfer from.");
   params.addParam<bool>("displaced_source_mesh", false, "Whether or not to use the displaced mesh for the source mesh.");
   params.addParam<bool>("displaced_target_mesh", false, "Whether or not to use the displaced mesh for the target mesh.");
-  params.addParam<bool>("fixed_meshes", false, "Set to true when the meshes are not changing (ie, no moviement or adaptivity).  This will cache nearest node neighbors to greatly speed up the transfer.");
+  params.addParam<bool>("fixed_meshes", false, "Set to true when the meshes are not changing (ie, no movement or adaptivity).  This will cache nearest node neighbors to greatly speed up the transfer.");
 
   return params;
 }
@@ -52,11 +52,17 @@ MultiAppNearestNodeTransfer::MultiAppNearestNodeTransfer(const std::string & nam
 }
 
 void
+MultiAppNearestNodeTransfer::initialSetup()
+{
+  variableIntegrityCheck(_to_var_name);
+}
+
+void
 MultiAppNearestNodeTransfer::execute()
 {
   Moose::out << "Beginning NearestNodeTransfer " << _name << std::endl;
 
-  switch(_direction)
+  switch (_direction)
   {
     case TO_MULTIAPP:
     {
@@ -86,13 +92,13 @@ MultiAppNearestNodeTransfer::execute()
       // EquationSystems & from_es = from_sys.get_equation_systems();
 
       //Create a serialized version of the solution vector
-      NumericVector<Number> * serialized_solution = NumericVector<Number>::build().release();
+      NumericVector<Number> * serialized_solution = NumericVector<Number>::build(from_sys.comm()).release();
       serialized_solution->init(from_sys.n_dofs(), false, SERIAL);
 
       // Need to pull down a full copy of this vector on every processor so we can get values in parallel
       from_sys.solution->localize(*serialized_solution);
 
-      for(unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
+      for (unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
       {
         if (_multi_app->hasLocalApp(i))
         {
@@ -100,9 +106,6 @@ MultiAppNearestNodeTransfer::execute()
 
           // Loop over the master nodes and set the value of the variable
           System * to_sys = find_sys(_multi_app->appProblem(i)->es(), _to_var_name);
-
-          if (!to_sys)
-            mooseError("Cannot find variable "<<_to_var_name<<" for "<<_name<<" Transfer");
 
           unsigned int sys_num = to_sys->number();
           unsigned int var_num = to_sys->variable_number(_to_var_name);
@@ -123,7 +126,7 @@ MultiAppNearestNodeTransfer::execute()
             MeshBase::const_node_iterator node_it = mesh->local_nodes_begin();
             MeshBase::const_node_iterator node_end = mesh->local_nodes_end();
 
-            for(; node_it != node_end; ++node_it)
+            for (; node_it != node_end; ++node_it)
             {
               Node * node = *node_it;
 
@@ -177,7 +180,7 @@ MultiAppNearestNodeTransfer::execute()
             MeshBase::const_element_iterator elem_it = mesh->local_elements_begin();
             MeshBase::const_element_iterator elem_end = mesh->local_elements_end();
 
-            for(; elem_it != elem_end; ++elem_it)
+            for (; elem_it != elem_end; ++elem_it)
             {
               Elem * elem = *elem_it;
 
@@ -301,7 +304,7 @@ MultiAppNearestNodeTransfer::execute()
         min_apps.resize(n_elems);
       }
 
-      for(unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
+      for (unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
       {
         if (!_multi_app->hasLocalApp(i))
           continue;
@@ -328,7 +331,7 @@ MultiAppNearestNodeTransfer::execute()
         else
           from_mesh = &from_problem.mesh().getMesh();
 
-        MeshTools::BoundingBox app_box = MeshTools::processor_bounding_box(*from_mesh, libMesh::processor_id());
+        MeshTools::BoundingBox app_box = MeshTools::processor_bounding_box(*from_mesh, from_mesh->processor_id());
         Point app_position = _multi_app->position(i);
 
         Moose::swapLibMeshComm(swapped);
@@ -338,7 +341,7 @@ MultiAppNearestNodeTransfer::execute()
           MeshBase::const_node_iterator to_node_it = to_mesh->nodes_begin();
           MeshBase::const_node_iterator to_node_end = to_mesh->nodes_end();
 
-          for(; to_node_it != to_node_end; ++to_node_it)
+          for (; to_node_it != to_node_end; ++to_node_it)
           {
             Node * to_node = *to_node_it;
             unsigned int to_node_id = to_node->id();
@@ -386,7 +389,7 @@ MultiAppNearestNodeTransfer::execute()
           MeshBase::const_element_iterator to_elem_it = to_mesh->elements_begin();
           MeshBase::const_element_iterator to_elem_end = to_mesh->elements_end();
 
-          for(; to_elem_it != to_elem_end; ++to_elem_it)
+          for (; to_elem_it != to_elem_end; ++to_elem_it)
           {
             Elem * to_elem = *to_elem_it;
             unsigned int to_elem_id = to_elem->id();
@@ -444,7 +447,7 @@ MultiAppNearestNodeTransfer::execute()
         // Swap
         MPI_Comm swapped = Moose::swapLibMeshComm(_multi_app->comm());
 
-        for(unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
+        for (unsigned int i=0; i<_multi_app->numGlobalApps(); i++)
         {
           if (!_multi_app->hasLocalApp(i))
             continue;
@@ -469,13 +472,13 @@ MultiAppNearestNodeTransfer::execute()
 */
 
       // We've found the nearest nodes for this processor.  We need to see which processor _actually_ found the nearest though
-      Parallel::minloc(min_distances, min_procs);
+      _communicator.minloc(min_distances, min_procs);
 
       // Now loop through min_procs and see if _this_ processor had the actual minimum for any nodes.
       // If it did then we're going to go get the value from that nearest node and transfer its value
-      processor_id_type proc_id = libMesh::processor_id();
+      processor_id_type proc_id = processor_id();
 
-      for(unsigned int j=0; j<min_procs.size(); j++)
+      for (unsigned int j=0; j<min_procs.size(); j++)
       {
         if (min_procs[j] == proc_id) // This means that this processor really did find the minumum so we need to transfer the value
         {
@@ -547,7 +550,7 @@ Node * MultiAppNearestNodeTransfer::getNearestNode(const Point & p, Real & dista
   distance = std::numeric_limits<Real>::max();
   Node * nearest = NULL;
 
-  for(MeshBase::const_node_iterator node_it = nodes_begin; node_it != nodes_end; ++node_it)
+  for (MeshBase::const_node_iterator node_it = nodes_begin; node_it != nodes_end; ++node_it)
   {
     Node & node = *(*node_it);
     Real current_distance = (p-node).size();

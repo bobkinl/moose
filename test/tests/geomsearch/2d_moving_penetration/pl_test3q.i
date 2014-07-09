@@ -45,7 +45,7 @@
   [../]
 []
 
-[AuxBCs]
+[AuxKernels]
   [./penetrate]
     type = PenetrationAux
     variable = distance
@@ -235,7 +235,7 @@
   exodus = true
   [./console]
     type = Console
-    pref_log = true
+    perf_log = true
     linear_residuals = true
   [../]
 []

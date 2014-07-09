@@ -5,6 +5,9 @@
 # Set LIBMESH_DIR if it is not already set in the environment (try our best to guess!)
 LIBMESH_DIR       ?= $(MOOSE_DIR)/libmesh/installed
 
+# Default number of parallel jobs to use for run_tests
+MOOSE_JOBS        ?= 8
+
 # If the user has no environment variable
 # called METHOD, he gets optimized mode.
 ifeq (x$(METHOD),x)
@@ -74,10 +77,6 @@ ifneq (,$(filter $(cxx_compiler), clang++))
 	libmesh_CXXFLAGS += -mmacosx-version-min=10.7
   endif
 endif
-
-# Number of JOBS to run in parallel used in run_tests
-JOBS ?= 1
-
 
 all::
 ifdef PRECOMPILED
@@ -278,6 +277,14 @@ endif
 	@echo "MOOSE Compiling Fortan Plugin (in "$(METHOD)" mode) "$<"..."
 	@$(libmesh_F90) $(libmesh_FFLAGS) -shared -fPIC $(app_INCLUDES) $(libmesh_INCLUDE) $< -o $@
 
+# Define the "test" target, we'll use a variable name so that we can override it without warnings if needed
+TEST ?= test
+$(TEST): all
+	@echo ======================================================
+	@echo Testing $(CURRENT_APP)
+	@echo ======================================================
+	@(./run_tests -j $(MOOSE_JOBS))
+
 # Build appliations up the tree
 up:
 	@echo ======================================================
@@ -304,6 +311,18 @@ test_up: up
 		(cd $${app} && ./run_tests -q -j $(MOOSE_JOBS)) ; \
 	done
 
+test_only_up:
+	@echo ======================================================
+	@echo Testing the following applications:
+	@for app in $(DEP_APPS); do echo \ $$app; done
+	@echo ======================================================
+	@echo
+	@for app in $(DEP_APPS); \
+	do \
+		echo ====== Testing in $${app} ====== ; \
+		(cd $${app} && ./run_tests -q -j $(MOOSE_JOBS)) ; \
+	done
+
 clean_up:
 	@echo ======================================================
 	@echo Cleaning the following applications: 
@@ -319,7 +338,7 @@ clean_up:
 #
 # Maintenance
 #
-.PHONY: cleanall clean clean_up doc sa 
+.PHONY: cleanall clean doc sa test up test_up test_only_up clean_up
 
 #
 # Misc

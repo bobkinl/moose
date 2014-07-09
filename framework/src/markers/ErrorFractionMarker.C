@@ -18,8 +18,10 @@ template<>
 InputParameters validParams<ErrorFractionMarker>()
 {
   InputParameters params = validParams<IndicatorMarker>();
-  params.addParam<Real>("coarsen", 0, "Elements within this percentage of the min error will be coarsened.  Must be between 0 and 1!");
-  params.addParam<Real>("refine", 0, "Elements within this percentage of the max error will be refined.  Must be between 0 and 1!");
+  params.addRangeCheckedParam<Real>("coarsen", 0, "coarsen>=0 & coarsen<=1",
+                                    "Elements within this percentage of the min error will be coarsened.  Must be between 0 and 1!");
+  params.addRangeCheckedParam<Real>("refine", 0, "refine>=0 & refine<=1",
+                                    "Elements within this percentage of the max error will be refined.  Must be between 0 and 1!");
   return params;
 }
 
@@ -29,10 +31,6 @@ ErrorFractionMarker::ErrorFractionMarker(const std::string & name, InputParamete
     _coarsen(parameters.get<Real>("coarsen")),
     _refine(parameters.get<Real>("refine"))
 {
-  mooseAssert(_coarsen <= 1, "coarsen amount in " + _name + " not less than 1!");
-  mooseAssert(_coarsen >= 0, "coarsen amount in " + _name + " not greater than 0!");
-  mooseAssert(_refine <= 1, "refine amount in " + _name + " not less than 1!");
-  mooseAssert(_refine >= 0, "refine amount in " + _name + " not greater than 0!");
 }
 
 void
@@ -42,7 +40,7 @@ ErrorFractionMarker::markerSetup()
   _max = 0;
 
   // First find the max and min error
-  for(unsigned int i=0; i<_error_vector.size(); i++)
+  for (unsigned int i=0; i<_error_vector.size(); i++)
   {
     _min = std::min(_min, static_cast<Real>(_error_vector[i]));
     _max = std::max(_max, static_cast<Real>(_error_vector[i]));
@@ -65,4 +63,3 @@ ErrorFractionMarker::computeElementMarker()
 
   return DO_NOTHING;
 }
-

@@ -24,6 +24,7 @@
 #include "SubProblem.h"
 #include "MooseVariableScalar.h"
 #include "MooseException.h"
+
 // libMesh
 #include "libmesh/equation_systems.h"
 #include "libmesh/dof_map.h"
@@ -31,6 +32,7 @@
 #include "libmesh/nonlinear_implicit_system.h"
 #include "libmesh/quadrature.h"
 #include "libmesh/point.h"
+#include "libmesh/parallel_object.h"
 
 class Factory;
 class MooseApp;
@@ -54,7 +56,7 @@ void extraSparsity(SparsityPattern::Graph & sparsity,
  * Base class for a system (of equations)
  *
  */
-class SystemBase
+class SystemBase : public libMesh::ParallelObject
 {
 public:
   SystemBase(SubProblem & subproblem, const std::string & name);
@@ -180,7 +182,7 @@ public:
    * Gets a reference to a variable with specified number
    *
    * @param tid Thread id
-   * @param var_number variable number
+   * @param var_number libMesh variable number
    * @return reference the variable (class)
    */
   virtual MooseVariable & getVariable(THREAD_ID tid, unsigned int var_number);
@@ -198,7 +200,7 @@ public:
    * Gets a reference to a variable with specified number
    *
    * @param tid Thread id
-   * @param var_number variable number
+   * @param var_number libMesh variable number
    * @return reference the variable (class)
    */
   virtual MooseVariableScalar & getScalarVariable(THREAD_ID tid, unsigned int var_number);
@@ -399,7 +401,7 @@ public:
       _solution(*_sys.solution),
       _solution_old(*_sys.old_local_solution),
       _solution_older(*_sys.older_local_solution),
-      _dummy_sln(NULL),
+      _dummy_vec(NULL),
       _exception(0)
   {
   }
@@ -480,11 +482,13 @@ public:
   virtual NumericVector<Number> & solutionOld() { return _solution_old; }
   virtual NumericVector<Number> & solutionOlder() { return _solution_older; }
 
-  virtual NumericVector<Number> & solutionUDot() { return *_dummy_sln; }
-  virtual NumericVector<Number> & solutionDuDotDu() { return *_dummy_sln; }
+  virtual NumericVector<Number> & solutionUDot() { return *_dummy_vec; }
+  virtual NumericVector<Number> & solutionDuDotDu() { return *_dummy_vec; }
 
   virtual bool hasVector(std::string name) { return _sys.have_vector(name); }
   virtual NumericVector<Number> & getVector(std::string name) { return _sys.get_vector(name); }
+
+  virtual NumericVector<Number> & residualVector(Moose::KernelType /*type*/) { return *_dummy_vec; }
 
   virtual void init()
   {
@@ -576,7 +580,7 @@ protected:
   NumericVector<Number> & _solution_old;
   NumericVector<Number> & _solution_older;
 
-  NumericVector<Number> * _dummy_sln;                     // to satisfy the interface
+  NumericVector<Number> * _dummy_vec;                     // to satisfy the interface
 
   std::vector<VarCopyInfo> _var_to_copy;
 
@@ -600,7 +604,7 @@ protected:
     _exception = e;                                                                     \
   }                                                                                     \
   {                                                                                     \
-    Parallel::max<MooseException>(_exception);                                          \
+    _communicator.max<MooseException>(_exception);                                          \
     if (_exception > 0)                                                                 \
       throw _exception;                                                                 \
   }
@@ -611,7 +615,7 @@ protected:
     _exception = e;                                                                     \
   }                                                                                     \
   {                                                                                     \
-    Parallel::max<MooseException>(_exception);                                          \
+    _communicator.max<MooseException>(_exception);                                          \
     if (_exception > 0)                                                                 \
       throw _exception;                                                                 \
   }

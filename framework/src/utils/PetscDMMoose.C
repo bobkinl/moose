@@ -1,3 +1,16 @@
+/****************************************************************/
+/*               DO NOT MODIFY THIS HEADER                      */
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*           (c) 2010 Battelle Energy Alliance, LLC             */
+/*                   ALL RIGHTS RESERVED                        */
+/*                                                              */
+/*          Prepared by Battelle Energy Alliance, LLC           */
+/*            Under Contract No. DE-AC07-05ID14517              */
+/*            With the U. S. Department of Energy               */
+/*                                                              */
+/*            See COPYRIGHT for full restrictions               */
+/****************************************************************/
 #include "libmesh/petsc_macro.h"
 // This only works with petsc-3.3 and above.
 
@@ -424,11 +437,11 @@ static PetscErrorCode DMMooseGetEmbedding_Private(DM dm, IS *embedding)
       DofMap& dofmap = dmm->nl->sys().get_dof_map();
       std::set<dof_id_type>               indices;
       std::set<dof_id_type> unindices;
-      for(std::map<std::string, dof_id_type>::const_iterator vit = dmm->varids->begin(); vit != dmm->varids->end(); ++vit){
+      for (std::map<std::string, dof_id_type>::const_iterator vit = dmm->varids->begin(); vit != dmm->varids->end(); ++vit){
   dof_id_type v = vit->second;
   /* Iterate only over this DM's blocks. */
   if (!dmm->allblocks || (dmm->nosides && dmm->nocontacts)) {
-    for(std::map<std::string, dof_id_type>::const_iterator bit = dmm->blockids->begin(); bit != dmm->blockids->end(); ++bit) {
+    for (std::map<std::string, dof_id_type>::const_iterator bit = dmm->blockids->begin(); bit != dmm->blockids->end(); ++bit) {
       dof_id_type b = bit->second;
       MeshBase::const_element_iterator el     = dmm->nl->sys().get_mesh().active_local_subdomain_elements_begin(b);
       MeshBase::const_element_iterator end_el = dmm->nl->sys().get_mesh().active_local_subdomain_elements_end(b);
@@ -437,7 +450,7 @@ static PetscErrorCode DMMooseGetEmbedding_Private(DM dm, IS *embedding)
         std::vector<dof_id_type> evindices;
         // Get the degree of freedom indices for the given variable off the current element.
         dofmap.dof_indices(elem, evindices, v);
-        for(dof_id_type i = 0; i < evindices.size(); ++i) {
+        for (dof_id_type i = 0; i < evindices.size(); ++i) {
     dof_id_type dof = evindices[i];
     if (dof >= dofmap.first_dof() && dof < dofmap.end_dof()) /* might want to use variable_first/last_local_dof instead */
       indices.insert(dof);
@@ -544,7 +557,7 @@ static PetscErrorCode DMMooseGetEmbedding_Private(DM dm, IS *embedding)
       PetscInt *darray;
       ierr = PetscMalloc(sizeof(PetscInt)*dindices.size(),&darray);CHKERRQ(ierr);
       dof_id_type i = 0;
-      for(std::set<dof_id_type>::const_iterator it = dindices.begin(); it != dindices.end(); ++it) {
+      for (std::set<dof_id_type>::const_iterator it = dindices.begin(); it != dindices.end(); ++it) {
   darray[i] = *it;
   ++i;
       }
@@ -705,7 +718,7 @@ static PetscErrorCode DMMooseFunction(DM dm, Vec x, Vec r)
   ierr = DMMooseGetNonlinearSystem(dm, nl); CHKERRQ(ierr);
   PetscVector<Number>& X_sys = *libmesh_cast_ptr<PetscVector<Number>* >(nl->sys().solution.get());
   PetscVector<Number>& R_sys = *libmesh_cast_ptr<PetscVector<Number>* >(nl->sys().rhs);
-  PetscVector<Number> X_global(x, libMesh::CommWorld), R(r, libMesh::CommWorld);
+  PetscVector<Number> X_global(x, nl->comm()), R(r, nl->comm());
 
   // Use the systems update() to get a good local version of the parallel solution
   X_global.swap(X_sys);
@@ -771,7 +784,11 @@ static PetscErrorCode SNESFunction_DMMoose(SNES, Vec x, Vec r, void *ctx)
 
 #undef __FUNCT__
 #define __FUNCT__ "DMMooseJacobian"
+#if PETSC_VERSION_LT(3,5,0)
 static PetscErrorCode DMMooseJacobian(DM dm, Vec x, Mat jac, Mat pc, MatStructure *msflag)
+#else
+static PetscErrorCode DMMooseJacobian(DM dm, Vec x, Mat jac, Mat pc)
+#endif
 {
   PetscErrorCode ierr;
   NonlinearSystem *nl;
@@ -779,11 +796,11 @@ static PetscErrorCode DMMooseJacobian(DM dm, Vec x, Mat jac, Mat pc, MatStructur
   PetscFunctionBegin;
   ierr = DMMooseGetNonlinearSystem(dm, nl);CHKERRQ(ierr);
 
-  PetscMatrix<Number>  the_pc(pc);
-  PetscMatrix<Number>  Jac(jac);
+  PetscMatrix<Number>  the_pc(pc, nl->comm());
+  PetscMatrix<Number>  Jac(jac, nl->comm());
   PetscVector<Number>& X_sys = *libmesh_cast_ptr<PetscVector<Number>*>(nl->sys().solution.get());
   PetscMatrix<Number>& Jac_sys = *libmesh_cast_ptr<PetscMatrix<Number>*>(nl->sys().matrix);
-  PetscVector<Number>  X_global(x, libMesh::CommWorld);
+  PetscVector<Number>  X_global(x, nl->comm());
 
   // Set the dof maps
   the_pc.attach_dof_map(nl->sys().get_dof_map());
@@ -833,21 +850,30 @@ static PetscErrorCode DMMooseJacobian(DM dm, Vec x, Mat jac, Mat pc, MatStructur
   the_pc.close();
   Jac.close();
   X_global.close();
-
+#if PETSC_VERSION_LT(3,5,0)
   *msflag = SAME_NONZERO_PATTERN;
+#endif
   PetscFunctionReturn(0);
 }
 
 #if !PETSC_VERSION_LT(3,4,0)
 #undef  __FUNCT__
 #define __FUNCT__ "SNESJacobian_DMMoose"
+#if PETSC_VERSION_LT(3,5,0)
 static PetscErrorCode SNESJacobian_DMMoose(SNES,Vec x,Mat *jac,Mat *pc, MatStructure* flag, void* ctx)
+#else
+static PetscErrorCode SNESJacobian_DMMoose(SNES,Vec x,Mat jac,Mat pc, void* ctx)
+#endif
 {
   DM dm = (DM)ctx;
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
+#if PETSC_VERSION_LT(3,5,0)
   ierr = DMMooseJacobian(dm,x,*jac,*pc,flag); CHKERRQ(ierr);
+#else
+  ierr = DMMooseJacobian(dm,x,jac,pc); CHKERRQ(ierr);
+#endif
   PetscFunctionReturn(0);
 }
 #endif
@@ -858,11 +884,13 @@ static PetscErrorCode DMVariableBounds_Moose(DM dm, Vec xl, Vec xu)
 {
   PetscErrorCode ierr;
   NonlinearSystem* nl;
-  PetscVector<Number> XL(xl, libMesh::CommWorld);
-  PetscVector<Number> XU(xu, libMesh::CommWorld);
 
   PetscFunctionBegin;
   ierr = DMMooseGetNonlinearSystem(dm, nl);CHKERRQ(ierr);
+
+  PetscVector<Number> XL(xl, nl->comm());
+  PetscVector<Number> XU(xu, nl->comm());
+
 #if PETSC_VERSION_LESS_THAN(3,5,0) && PETSC_VERSION_RELEASE
   ierr = VecSet(xl, SNES_VI_NINF);CHKERRQ(ierr);
   ierr = VecSet(xu, SNES_VI_INF);CHKERRQ(ierr);
@@ -991,14 +1019,14 @@ static PetscErrorCode  DMView_Moose(DM dm, PetscViewer viewer)
     ierr = PetscViewerASCIIPrintf(viewer, "variables:", name, prefix); CHKERRQ(ierr);
     std::map<std::string,unsigned int>::iterator vit = dmm->varids->begin();
     std::map<std::string,unsigned int>::const_iterator vend = dmm->varids->end();
-    for(; vit != vend; ++vit) {
+    for (; vit != vend; ++vit) {
       ierr = PetscViewerASCIIPrintf(viewer, "(%s,%D) ", vit->first.c_str(), vit->second); CHKERRQ(ierr);
     }
     ierr = PetscViewerASCIIPrintf(viewer, "\n");CHKERRQ(ierr);
     ierr = PetscViewerASCIIPrintf(viewer, "blocks:"); CHKERRQ(ierr);
     std::map<std::string,unsigned int>::iterator bit = dmm->blockids->begin();
     std::map<std::string,unsigned int>::const_iterator bend = dmm->blockids->end();
-    for(; bit != bend; ++bit) {
+    for (; bit != bend; ++bit) {
       ierr = PetscViewerASCIIPrintf(viewer, "(%s,%D) ", bit->first.c_str(), bit->second); CHKERRQ(ierr);
     }
     ierr = PetscViewerASCIIPrintf(viewer, "\n");CHKERRQ(ierr);
@@ -1075,13 +1103,13 @@ static PetscErrorCode  DMMooseGetMeshBlocks_Private(DM dm, std::set<subdomain_id
   const MeshBase& mesh = dmm->nl->sys().get_mesh();
   /* The following effectively is a verbatim copy of MeshBase::n_subdomains(). */
   // This requires an inspection on every processor
-  parallel_only();
+  libmesh_parallel_only(mesh.comm());
   MeshBase::const_element_iterator       el  = mesh.active_elements_begin();
   const MeshBase::const_element_iterator end = mesh.active_elements_end();
   for (; el!=end; ++el)
     blocks.insert((*el)->subdomain_id());
   // Some subdomains may only live on other processors
-  CommWorld.set_union(blocks);
+  mesh.comm().set_union(blocks);
   PetscFunctionReturn(0);
 }
 
@@ -1184,7 +1212,7 @@ static PetscErrorCode  DMSetUp_Moose_Pre(DM dm)
   // FIXME: would be nice to invert this nested loop structure so we could iterate over the potentially smaller dmm->vars,
   // but checking against dofmap.variable would still require a linear search, hence, no win.  Would be nice to endow dofmap.variable
   // with a fast search capability.
-  for(unsigned int v = 0; v < dofmap.n_variables(); ++v) {
+  for (unsigned int v = 0; v < dofmap.n_variables(); ++v) {
     std::string vname = dofmap.variable(v).name();
     if (dmm->vars && dmm->vars->size() && dmm->vars->find(vname) == dmm->vars->end()) continue;
     dmm->varids->insert(std::pair<std::string,unsigned int>(vname,v));
@@ -1203,7 +1231,7 @@ static PetscErrorCode  DMSetUp_Moose_Pre(DM dm)
   std::set<subdomain_id_type>::iterator bit = blocks.begin();
   std::set<subdomain_id_type>::iterator bend = blocks.end();
   if (bit == bend) SETERRQ(((PetscObject)dm)->comm, PETSC_ERR_PLIB, "No mesh blocks found.");
-  for(; bit != bend; ++bit) {
+  for (; bit != bend; ++bit) {
     subdomain_id_type bid = *bit;
     std::string bname = mesh.subdomain_name(bid);
     if (!bname.length()) {

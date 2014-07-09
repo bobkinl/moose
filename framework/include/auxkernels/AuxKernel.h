@@ -108,6 +108,10 @@ public:
 
   const UserObject & getUserObjectBase(const std::string & name);
 
+
+  virtual PostprocessorValue & getPostprocessorValue(const std::string & name);
+  virtual const PostprocessorValue & getPostprocessorValueByName(const PostprocessorName & name);
+
 protected:
   virtual Real computeValue() = 0;
 
@@ -191,7 +195,7 @@ MaterialProperty<T> &
 AuxKernel::getMaterialProperty(const std::string & name)
 {
   if (isNodal())
-    mooseError(std::string("Nodal AuxKernel '") + _name + "' attempted to reference material property '" + name + "'");
+    mooseError("Nodal AuxKernel '" << _name << "' attempted to reference material property '" << name << "'\nConsider using an elemental auxiliary variable for '" << _var.name() << "'.");
 
   return MaterialPropertyInterface::getMaterialProperty<T>(name);
 }
@@ -201,7 +205,7 @@ MaterialProperty<T> &
 AuxKernel::getMaterialPropertyOld(const std::string & name)
 {
   if (isNodal())
-    mooseError(std::string("Nodal AuxKernel '") + _name + "' attempted to reference material property '" + name + "'");
+    mooseError("Nodal AuxKernel '" << _name << "' attempted to reference material property '" << name << "'\nConsider using an elemental auxiliary variable for '" << _var.name() << "'.");
 
   return MaterialPropertyInterface::getMaterialPropertyOld<T>(name);
 }
@@ -211,7 +215,7 @@ MaterialProperty<T> &
 AuxKernel::getMaterialPropertyOlder(const std::string & name)
 {
   if (isNodal())
-    mooseError(std::string("Nodal AuxKernel '") + _name + "' attempted to reference material property '" + name + "'");
+    mooseError("Nodal AuxKernel '" << _name << "' attempted to reference material property '" << name << "'\nConsider using an elemental auxiliary variable for '" << _var.name() << "'.");
 
   return MaterialPropertyInterface::getMaterialPropertyOlder<T>(name);
 }

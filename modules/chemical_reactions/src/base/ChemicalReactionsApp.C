@@ -26,6 +26,7 @@
 #include "ChemicalOutFlowBC.h"
 
 #include "LangmuirMaterial.h"
+#include "MollifiedLangmuirMaterial.h"
 
 template<>
 InputParameters validParams<ChemicalReactionsApp>()
@@ -37,7 +38,7 @@ InputParameters validParams<ChemicalReactionsApp>()
 ChemicalReactionsApp::ChemicalReactionsApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   ChemicalReactionsApp::registerObjects(_factory);
@@ -76,6 +77,7 @@ ChemicalReactionsApp::registerObjects(Factory & factory)
   registerBoundaryCondition(ChemicalOutFlowBC);
 
   registerMaterial(LangmuirMaterial);
+  registerMaterial(MollifiedLangmuirMaterial);
 }
 
 void

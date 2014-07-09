@@ -16,6 +16,8 @@
 #include "MooseTypes.h"
 #include "MooseUtils.h"
 
+#include <cmath>
+
 InputParameters emptyInputParameters()
 {
   InputParameters params;
@@ -49,6 +51,7 @@ InputParameters::clear()
   _doc_string.clear();
   _custom_type.clear();
   _group.clear();
+  _range_functions.clear();
   _required_params.clear();
   _valid_params.clear();
   _private_params.clear();
@@ -72,6 +75,10 @@ InputParameters::set_attributes(const std::string & name, bool inserted_only)
   // valid_params don't make sense for MooseEnums
   if (!inserted_only && !have_parameter<MooseEnum>(name))
     _valid_params.insert(name);
+
+  /* If set_attributes is called then the user has changed it from the default value
+     set by addParam, thus remove if from the list */
+  _set_by_add_param.erase(name);
 }
 
 std::string
@@ -89,19 +96,21 @@ InputParameters::operator=(const InputParameters &rhs)
 {
   Parameters::operator=(rhs);
 
-  this->_doc_string = rhs._doc_string;
-  this->_custom_type = rhs._custom_type;
-  this->_group = rhs._group;
-  this->_buildable_types = rhs._buildable_types;
-  this->_required_params = rhs._required_params;
-  this->_private_params = rhs._private_params;
-  this->_valid_params = rhs._valid_params;
-  this->_coupled_vars = rhs._coupled_vars;
-  this->_syntax = rhs._syntax;
-  this->_default_coupled_value = rhs._default_coupled_value;
-  this->_default_postprocessor_value = rhs._default_postprocessor_value;
+  _doc_string = rhs._doc_string;
+  _custom_type = rhs._custom_type;
+  _group = rhs._group;
+  _range_functions = rhs._range_functions;
+  _buildable_types = rhs._buildable_types;
   _collapse_nesting = rhs._collapse_nesting;
   _moose_object_syntax_visibility = rhs._moose_object_syntax_visibility;
+  _required_params = rhs._required_params;
+  _private_params = rhs._private_params;
+  _valid_params = rhs._valid_params;
+  _coupled_vars = rhs._coupled_vars;
+  _syntax = rhs._syntax;
+  _default_coupled_value = rhs._default_coupled_value;
+  _default_postprocessor_value = rhs._default_postprocessor_value;
+  _set_by_add_param = rhs._set_by_add_param;
 
   return *this;
 }
@@ -114,7 +123,9 @@ InputParameters::operator+=(const InputParameters &rhs)
   _doc_string.insert(rhs._doc_string.begin(), rhs._doc_string.end());
   _custom_type.insert(rhs._custom_type.begin(), rhs._custom_type.end());
   _group.insert(rhs._group.begin(), rhs._group.end());
+  _range_functions.insert(rhs._range_functions.begin(), rhs._range_functions.end());
   _buildable_types.insert(_buildable_types.end(), rhs._buildable_types.begin(), rhs._buildable_types.end());
+  // Collapse nesting and moose object syntax hiding are not modified with +=
   _required_params.insert(rhs._required_params.begin(), rhs._required_params.end());
   _private_params.insert(rhs._private_params.begin(), rhs._private_params.end());
   _valid_params.insert(rhs._valid_params.begin(), rhs._valid_params.end());
@@ -122,7 +133,7 @@ InputParameters::operator+=(const InputParameters &rhs)
   _syntax.insert(rhs._syntax.begin(), rhs._syntax.end());
   _default_coupled_value.insert(rhs._default_coupled_value.begin(), rhs._default_coupled_value.end());
   _default_postprocessor_value.insert(rhs._default_postprocessor_value.begin(), rhs._default_postprocessor_value.end());
-  // Collapse nesting and moose object syntax hiding are not modified with +=
+  _set_by_add_param.insert(rhs._set_by_add_param.begin(), rhs._set_by_add_param.end());
 
   return *this;
 }
@@ -130,25 +141,23 @@ InputParameters::operator+=(const InputParameters &rhs)
 void
 InputParameters::addCoupledVar(const std::string &name, Real value, const std::string &doc_string)
 {
+  //std::vector<VariableName>(1, Moose::stringify(value)),
+  addParam<std::vector<VariableName> >(name, doc_string);
+  _coupled_vars.insert(name);
   _default_coupled_value[name] = value;
-
-  addCoupledVar(name, doc_string);
 }
 
 void
 InputParameters::addCoupledVar(const std::string &name, const std::string &doc_string)
 {
-  InputParameters::set<std::vector<VariableName> >(name);
-  _doc_string[name] = doc_string;
+  addParam<std::vector<VariableName> >(name, doc_string);
   _coupled_vars.insert(name);
 }
 
 void
 InputParameters::addRequiredCoupledVar(const std::string &name, const std::string &doc_string)
 {
-  InputParameters::insert<std::vector<VariableName> >(name);
-  _required_params.insert(name);
-  _doc_string[name] = doc_string;
+  addRequiredParam<std::vector<VariableName> >(name, doc_string);
   _coupled_vars.insert(name);
 }
 
@@ -244,27 +253,65 @@ InputParameters::mooseObjectSyntaxVisibility() const
   return _moose_object_syntax_visibility;
 }
 
+#define dynamicCastRangeCheck(type, up_type, long_name, short_name, param, oss) \
+  do                                                                                                            \
+  {                                                                                                             \
+    InputParameters::Parameter<type> * scalar_p = dynamic_cast<InputParameters::Parameter<type>*>(param);       \
+    if (scalar_p)                                                                                               \
+      rangeCheck<type, up_type>(long_name, short_name, scalar_p, oss); \
+  } while (0)
+
+
 void
-InputParameters::checkParams(const std::string &prefix) const
+InputParameters::checkParams(const std::string &prefix)
 {
   std::string l_prefix = this->have_parameter<std::string>("long_name") ? this->get<std::string>("long_name") : prefix;
 
+  std::ostringstream oss;
+  // Required parameters
   for (InputParameters::const_iterator it = this->begin(); it != this->end(); ++it)
   {
     if (!isParamValid(it->first) && isParamRequired(it->first))
     {
       // The parameter is required but missing
-      std::string doc = getDocString(it->first);
-      mooseError("The required parameter '" + l_prefix + "/" + it->first + "' is missing\nDoc String: \"" +
-                 getDocString(it->first) + "\"");
+      if (oss.str().empty())
+        oss << "The following required parameters are missing:" << std::endl;
+      oss << l_prefix << "/" << it->first << std::endl;
+      oss << "\tDoc String: \"" + getDocString(it->first) + "\"" << std::endl;
     }
   }
+
+  // Range checked parameters
+  for (InputParameters::const_iterator it = this->begin(); it != this->end(); ++it)
+  {
+    std::string long_name(l_prefix + "/" + it->first);
+
+    dynamicCastRangeCheck(Real, Real,         long_name, it->first, it->second, oss);
+    dynamicCastRangeCheck(int,  long,         long_name, it->first, it->second, oss);
+    dynamicCastRangeCheck(long, long,         long_name, it->first, it->second, oss);
+    dynamicCastRangeCheck(unsigned int, long, long_name, it->first, it->second, oss);
+  }
+
+  if (!oss.str().empty())
+    mooseError(oss.str());
+}
+
+bool
+InputParameters::hasDefaultCoupledValue(const std::string & coupling_name) const
+{
+  return _default_coupled_value.find(coupling_name) != _default_coupled_value.end();
+}
+
+void
+InputParameters::defaultCoupledValue(const std::string & coupling_name, Real value)
+{
+  _default_coupled_value[coupling_name] = value;
 }
 
 Real
-InputParameters::defaultCoupledValue(std::string coupling_name)
+InputParameters::defaultCoupledValue(const std::string & coupling_name) const
 {
-  std::map<std::string, Real>::iterator value_it = _default_coupled_value.find(coupling_name);
+  std::map<std::string, Real>::const_iterator value_it = _default_coupled_value.find(coupling_name);
 
   if (value_it == _default_coupled_value.end())
     mooseError("Attempted to retrieve default value for coupled variable '" << coupling_name << "' when none was provided. \n\nThere are three reasons why this may have occurred:\n 1. The other version of params.addCoupledVar() should be used in order to provde a default value. \n 2. This should have been a required coupled variable added with params.addRequiredCoupledVar() \n 3. The call to get the coupled value should have been properly guarded with isCoupled()\n");
@@ -340,7 +387,6 @@ InputParameters::addParamNamesToGroup(const std::string &space_delim_names, cons
 
 }
 
-
 std::vector<std::string>
 InputParameters::getSyntax(const std::string &name)
 {
@@ -358,21 +404,11 @@ InputParameters::getGroupName(const std::string &param_name) const
     return std::string();
 }
 
-void
-InputParameters::addPostprocessor(const std::string & name, Real default_value, const std::string &doc_string)
-{
-  // Add the postprocessor name parameter in traditional manner
-  addParam<PostprocessorName>(name, doc_string);
-
-  // Store the default value
-  _default_postprocessor_value[name] = default_value;
-}
-
 PostprocessorValue &
-InputParameters::defaultPostprocessorValue(const std::string & name)
+InputParameters::defaultPostprocessorValue(const std::string & name, bool suppress_error)
 {
   // Check that a default exists, error if it does not
-  if (!hasDefaultPostprocessorValue(name))
+  if (!(suppress_error || hasDefaultPostprocessorValue(name)))
     mooseError("A default PostprcessorValue does not exist for the given name: " << name);
 
   // Return the value
@@ -389,28 +425,28 @@ void
 InputParameters::applyParameters(const InputParameters & common)
 {
   // Loop through the common parameters
-  for(InputParameters::const_iterator it = common.begin(); it != common.end(); ++it)
+  for (InputParameters::const_iterator it = common.begin(); it != common.end(); ++it)
   {
     // Common parameter name
     const std::string & common_name = it->first;
 
-    // Does the paramter exist, is it valid, and is it private for this set of paramters
-    bool has = _values.find(common_name) != _values.end();
-    bool valid = isParamValid(common_name);
-    bool priv = isPrivate(common_name);
+    // Extract the properties from the local parameter for the current common parameter name
+    bool local_exist = _values.find(common_name) != _values.end();
+    bool local_set   = _set_by_add_param.find(common_name) == _set_by_add_param.end();
+    bool local_priv  = isPrivate(common_name);
+    bool local_valid = isParamValid(common_name);
 
-    // Is the common parameter valid or private
+    // Extract the properties from the common parameter
     bool common_valid = common.isParamValid(common_name);
-    bool common_priv= common.isPrivate(common_name);
+    bool common_priv  = common.isPrivate(common_name);
 
-    /* Apply the common parameter if:
-     * (1) The common paramter exists on THIS set of parameters
-     * (2) THIS parameter is not already valid
-     * (3) THIS paramater is not private
-     * (4) The common parameter is valid
-     * (5) The common parameter is not private
+    /* In order to apply common parameter 4 statements must be satisfied
+     * (1) A local parameter must exist with the same name as common parameter
+     * (2) Common parameter must valid
+     * (3) Local parameter must be invalid OR not have been set from its default
+     * (4) Neither may be private
      */
-    if (has && !valid && !priv && common_valid && !common_priv)
+    if ( local_exist && common_valid && (!local_valid || !local_set) && (!common_priv || !local_priv))
     {
       delete _values[common_name];
       _values[common_name] = it->second->clone();

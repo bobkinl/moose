@@ -12,7 +12,7 @@ InputParameters validParams<WaterSteamEOSApp>()
 WaterSteamEOSApp::WaterSteamEOSApp(const std::string & name, InputParameters parameters) :
     MooseApp(name, parameters)
 {
-  srand(libMesh::processor_id());
+  srand(processor_id());
 
   Moose::registerObjects(_factory);
   WaterSteamEOSApp::registerObjects(_factory);
@@ -32,11 +32,11 @@ WaterSteamEOSApp::registerApps()
 }
 
 void
-WaterSteamEOSApp::registerObjects(Factory & factory)
+WaterSteamEOSApp::registerObjects(Factory & /*factory*/)
 {
 }
 
 void
-WaterSteamEOSApp::associateSyntax(Syntax & syntax, ActionFactory & action_factory)
+WaterSteamEOSApp::associateSyntax(Syntax & /*syntax*/, ActionFactory & /*action_factory*/)
 {
 }

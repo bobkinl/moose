@@ -204,11 +204,7 @@ AdaptiveTransient::init()
   _problem.initialSetup();
 
   Moose::setup_perf_log.push("Output Initial Condition","Setup");
-  if (_output_initial)
-  {
-    _problem.output();
-    _problem.outputPostprocessors();
-  }
+  _output_warehouse.outputInitial();
   Moose::setup_perf_log.pop("Output Initial Condition","Setup");
 
   // If this is the first step
@@ -225,7 +221,7 @@ AdaptiveTransient::execute()
   preExecute();
 
   // Start time loop...
-  while(keepGoing())
+  while (keepGoing())
   {
     takeStep();
     if (lastSolveConverged())
@@ -238,7 +234,7 @@ void
 AdaptiveTransient::takeStep(Real input_dt)
 {
   if (_converged)
-    _problem.copyOldSolutions();
+    _problem.advanceState();
   else
     _problem.restoreSolutions();
 
@@ -249,11 +245,6 @@ AdaptiveTransient::takeStep(Real input_dt)
     _dt = input_dt;
 
   _problem.onTimestepBegin();
-  if (_converged)
-  {
-    // Update backward material data structures
-    _problem.updateMaterials();
-  }
 
   // Increment time
   _time = _time_old + _dt;
@@ -345,8 +336,11 @@ void
 AdaptiveTransient::endStep()
 {
   // if _synced_last_step is true, force the output no matter what
-  _problem.output(_synced_last_step);
-  _problem.outputPostprocessors(_synced_last_step);
+  if (_synced_last_step)
+  {
+    _output_warehouse.forceOutput();
+    _output_warehouse.outputStep();
+  }
 
 #ifdef LIBMESH_ENABLE_AMR
   if (_problem.adaptivity().isOn())
@@ -748,10 +742,10 @@ AdaptiveTransient::keepGoing()
 {
   bool kg = true;
   // Check for stop condition based upon number of simulation steps and/or solution end time:
-  if(_t_step>_num_steps)
+  if (_t_step>_num_steps)
     kg = false;
 
-  if((_time>_end_time) || (fabs(_time-_end_time)<1.e-14))
+  if ((_time>_end_time) || (fabs(_time-_end_time)<1.e-14))
   {
     if (lastSolveConverged())
     {

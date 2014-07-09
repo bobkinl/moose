@@ -41,14 +41,14 @@ StressDivergenceTruss::StressDivergenceTruss(const std::string & name, InputPara
 void
 StressDivergenceTruss::initialSetup()
 {
-  _orientation = &_subproblem.assembly(_tid).getFE(FEType())->get_dxyzdxi();
+  _orientation = &_subproblem.assembly(_tid).getFE(FEType(), _current_elem->dim())->get_dxyzdxi();
 }
 
 
 void
 StressDivergenceTruss::computeResidual()
 {
-  DenseVector<Number> & re = _assembly.residualBlock(_var.index());
+  DenseVector<Number> & re = _assembly.residualBlock(_var.number());
   mooseAssert(re.size() == 2, "Truss elements must have two nodes");
   _local_re.resize(re.size());
   _local_re.zero();
@@ -63,10 +63,10 @@ StressDivergenceTruss::computeResidual()
 
   re += _local_re;
 
-  if(_has_save_in)
+  if (_has_save_in)
   {
     Threads::spin_mutex::scoped_lock lock(Threads::spin_mtx);
-    for(unsigned int i=0; i<_save_in.size(); i++)
+    for (unsigned int i=0; i<_save_in.size(); i++)
       _save_in[i]->sys().solution().add_vector(_local_re, _save_in[i]->dofIndices());
   }
 }
@@ -112,7 +112,7 @@ void
 StressDivergenceTruss::computeJacobian()
 {
 
-  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), _var.index());
+  DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), _var.number());
   _local_ke.resize(ke.m(), ke.n());
   _local_ke.zero();
 
@@ -130,15 +130,15 @@ StressDivergenceTruss::computeJacobian()
 
   ke += _local_ke;
 
-  if(_has_diag_save_in)
+  if (_has_diag_save_in)
   {
     unsigned int rows = ke.m();
     DenseVector<Number> diag(rows);
-    for(unsigned int i=0; i<rows; i++)
+    for (unsigned int i=0; i<rows; i++)
       diag(i) = _local_ke(i,i);
 
     Threads::spin_mutex::scoped_lock lock(Threads::spin_mtx);
-    for(unsigned int i=0; i<_diag_save_in.size(); i++)
+    for (unsigned int i=0; i<_diag_save_in.size(); i++)
       _diag_save_in[i]->sys().solution().add_vector(diag, _diag_save_in[i]->dofIndices());
   }
 }
@@ -146,7 +146,7 @@ StressDivergenceTruss::computeJacobian()
 void
 StressDivergenceTruss::computeOffDiagJacobian(unsigned int jvar)
 {
-  if (jvar == _var.index())
+  if (jvar == _var.number())
   {
     computeJacobian();
   }
@@ -172,7 +172,7 @@ StressDivergenceTruss::computeOffDiagJacobian(unsigned int jvar)
       active = true;
     }
 
-    DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.index(), jvar);
+    DenseMatrix<Number> & ke = _assembly.jacobianBlock(_var.number(), jvar);
 
     if (active)
     {

@@ -16,7 +16,7 @@
 #define CSV_H
 
 // MOOSE includes
-#include "TableOutputter.h"
+#include "TableOutput.h"
 
 // Forward declarations
 class CSV;
@@ -30,7 +30,7 @@ InputParameters validParams<CSV>();
  * @see Exodus
  */
 class CSV :
-  public TableOutputter
+  public TableOutput
 {
 public:
 
@@ -59,6 +59,17 @@ public:
    * @return A string of output file including the extension
    */
   virtual std::string filename();
+
+  /**
+   * Setup the CSV output
+   * If restarting and the append_restart flag is false, then the output data is cleared here
+   */
+  void initialSetup();
+
+private:
+
+  /// Flag for aligning data in .csv file
+  bool _align;
 };
 
 #endif /* CSV_H */

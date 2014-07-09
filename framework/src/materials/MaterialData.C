@@ -58,6 +58,12 @@ MaterialData::nQPoints()
 }
 
 void
+MaterialData::copy(const Elem & elem_to, const Elem & elem_from, unsigned int side)
+{
+  _storage.copy(*this, elem_to, elem_from, side, _n_qpoints);
+}
+
+void
 MaterialData::swap(const Elem & elem, unsigned int side/* = 0*/)
 {
   if (_storage.hasStatefulProperties())
@@ -77,29 +83,11 @@ MaterialData::reinit(std::vector<Material *> & mats)
 void
 MaterialData::swapBack(const Elem & elem, unsigned int side/* = 0*/)
 {
-  if (_storage.hasStatefulProperties())
+  if (_swapped && _storage.hasStatefulProperties())
   {
     _storage.swapBack(*this, elem, side);
     _swapped = false;
   }
-}
-
-bool
-MaterialData::have_property_name(const std::string & prop_name) const
-{
-  return _storage.hasProperty(prop_name);
-}
-
-bool
-MaterialData::have_property_name_old(const std::string & prop_name) const
-{
-  return _storage.hasProperty(prop_name);
-}
-
-bool
-MaterialData::have_property_name_older(const std::string & prop_name) const
-{
-  return _storage.hasProperty(prop_name);
 }
 
 bool

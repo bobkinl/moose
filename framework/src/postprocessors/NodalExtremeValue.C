@@ -25,13 +25,13 @@ InputParameters validParams<NodalExtremeValue>()
 
   // Define the parameters
   InputParameters params = validParams<NodalVariablePostprocessor>();
-  params.addParam<MooseEnum>("value_type", type_options, "Type of extreme value to return. 'max' returns the maximum value. 'min' returns the minimu value.");
+  params.addParam<MooseEnum>("value_type", type_options, "Type of extreme value to return. 'max' returns the maximum value. 'min' returns the minimum value.");
   return params;
 }
 
 NodalExtremeValue::NodalExtremeValue(const std::string & name, InputParameters parameters) :
   NodalVariablePostprocessor(name, parameters),
-  _type(parameters.get<MooseEnum>("value_type")),
+  _type((ExtremeType)(int)parameters.get<MooseEnum>("value_type")),
   _value(_type == 0 ? -std::numeric_limits<Real>::max() : std::numeric_limits<Real>::max())
 {}
 
@@ -40,11 +40,11 @@ NodalExtremeValue::initialize()
 {
   switch (_type)
   {
-    case 0:
+    case MAX:
       _value = -std::numeric_limits<Real>::max(); // start w/ the min
       break;
 
-    case 1:
+    case MIN:
       _value = std::numeric_limits<Real>::max(); // start w/ the max
       break;
   }
@@ -55,11 +55,11 @@ NodalExtremeValue::execute()
 {
   switch (_type)
   {
-    case 0:
+    case MAX:
       _value = std::max(_value, _u[_qp]);
       break;
 
-    case 1:
+    case MIN:
       _value = std::min(_value, _u[_qp]);
       break;
   }
@@ -70,10 +70,10 @@ NodalExtremeValue::getValue()
 {
   switch (_type)
   {
-    case 0:
+    case MAX:
       gatherMax(_value);
       break;
-    case 1:
+    case MIN:
       gatherMin(_value);
       break;
   }
@@ -88,10 +88,10 @@ NodalExtremeValue::threadJoin(const UserObject & y)
 
   switch (_type)
   {
-    case 0:
+    case MAX:
       _value = std::max(_value, pps._value);
       break;
-    case 1:
+    case MIN:
       _value = std::min(_value, pps._value);
       break;
   }
